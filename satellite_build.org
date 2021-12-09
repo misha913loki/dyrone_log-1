@@ -1,0 +1,74 @@
+* Satellite Build
+
+** satelllite在Mac上fail to build
+
+#+begin_src shell
+
+➜  satellite git:(tl/git_midx) ✗ make
+start verifying go vendor...
+verify successfully
+fatal: 没有附注标签能描述 '26c6093906342ea6fa70c851aea4cf1d45e7ec21'。
+然而，存在未附注标签：尝试 --tags。
+go install -mod=vendor -ldflags '-X gitlab.alibaba-inc.com/force/satellite/internal/version.version= -X gitlab.alibaba-inc.com/force/satellite/internal/version.buildtime=20211209.020113' gitlab.alibaba-inc.com/force/satellite/cmd/satellite gitlab.alibaba-inc.com/force/satellite/cmd/satellite-ssh gitlab.alibaba-inc.com/force/satellite/cmd/stone-ssh
+# gitlab.alibaba-inc.com/force/git2go
+vendor/gitlab.alibaba-inc.com/force/git2go/repository.go:132:2: could not determine kind of name for C.git_repository_set_crypto
+make: *** [build] Error 2
+#+end_src
+
+** 使用agit gitlab2构建
+#+begin_src shell
+   git clone git@gitlab.alibaba-inc.com:force/libgit2.git  
+#+end_src
+
+
+
+** libgit2 build error on MAC
+
+#+begin_src text
+[ 78%] Building C object CMakeFiles/libgit2_clar.dir/tests/worktree/worktree_helpers.c.o
+[ 78%] Building C object CMakeFiles/libgit2_clar.dir/deps/http-parser/http_parser.c.o
+[ 78%] Building C object CMakeFiles/libgit2_clar.dir/src/hash/sha256/block/sha256.c.o                            [ 79%] Linking C executable libgit2_clar
+ld: cannot link directly with dylib/framework, your binary is not an allowed client of /usr/lib/libcrypto.dylib for architecture x86_64                                                                                                                   
+clang: error: linker command failed with exit code 1 (use -v to see invocation)
+make[2]: *** [libgit2_clar] Error 1                                                                                          
+make[1]: *** [CMakeFiles/libgit2_clar.dir/all] Error 2                                                                       
+make: *** [all] Error 2
+#+end_src
+
+** link the openssl
+
+#+begin_src shell
+sudo ln -s /usr/local/Cellar/openssl@1.1/1.1.1g/lib/libcrypto.1.1.dylib /usr/local/lib/libcrypto.dylib
+sudo ln -s /usr/local/Cellar/openssl@1.1/1.1.1g/lib/libssl.1.1.dylib /usr/local/lib/libssl.dylib
+cmake [normal arguments] -DOPENSSL_CRYPTO_LIBRARY="/usr/local/lib/libcrypto.dylib" -DOPENSSL_SSL_LIBRARY=/usr/local/lib/libssl.dylib
+#+end_src text
+
+#+begin_src shell#
+ // from https://github.com/google/s2geometry/issues/87#issuecomment-652605768
+ cmake -DOPENSSL_CRYPTO_LIBRARY="/usr/local/lib/libcrypto.dylib" -DOPENSSL_SSL_LIBRARY=/usr/local/lib/libssl.dylib --build .
+#+end_src
+
+*按照自己本地目录为准 **
+#+begin_src shell#
+brew install openssl
+export PKG_CONFIG_PATH=/usr/local/Cellar/openssl@1.1/1.1.1i/lib/pkgconfig
+#+end_src
+
+** 回到libgit2工程下构建
+
+mkdir build
+cmake ..
+cmake --build .
+sudo make install
+
+默认按照在/usr/local/lib下
+
+** 再次尝试构建satellite 成功
+
+➜  satellite git:(tl/git_midx) ✗ make                                                                                    <<<
+start verifying go vendor...
+verify successfully
+fatal: 没有附注标签能描述 '26c6093906342ea6fa70c851aea4cf1d45e7ec21'。
+然而，存在未附注标签：尝试 --tags。
+go install -mod=vendor -ldflags '-X gitlab.alibaba-inc.com/force/satellite/internal/version.version= -X gitlab.alibaba-inc.com/force/satellite/internal/version.buildtime=20211209.030047' gitlab.alibaba-inc.com/force/satellite/cmd/satellite gitlab.alibaba-inc.com/force/satellite/cmd/satellite-ssh gitlab.alibaba-inc.com/force/satellite/cmd/stone-ssh
+cp /Users/tenglong.tl/go/src/gitlab.alibaba-inc.com/agit/satellite/_build/bin/satellite /Users/tenglong.tl/go/src/gitlab.alibaba-inc.com/agit/satellite/_build/bin/satellite-ssh /Users/tenglong.tl/go/src/gitlab.alibaba-inc.com/agit/satellite/_build/bin/stone-ssh /Users/tenglong.tl/go/src/gitlab.alibaba-inc.com/agit/satellite/
