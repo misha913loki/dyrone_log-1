@@ -1,0 +1,8 @@
+**Scalar** 
+
+
+* Origin
+** a background maintainance tool for monorepo in MS such as OFFICE
+* Why
+** Becoming a git expert is hard, gc, partial clone, sparce-checkout....
+

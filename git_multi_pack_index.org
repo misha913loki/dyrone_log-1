@@ -1,0 +1,132 @@
+* Git multiple pack index
+
+** repack
+*** --batch-size
+**** 0: Run a full repack
+***** 选择次大包 + 1的size作为batch-size:  因为最初的包可能很大， 例如clone最开始就是一个pack.
+***** 这意味着可能是第二大的包文件大小随着时间的推移而成长，最终可能超过最初克隆的包文件。 通过一个贪心算法解决， 将从从最古老的到最新的的顺序， 累加pack的size， 如不超过batch-size，则累加， 超过则停止。 所以这种情况下，当一个更新的更大的包出现后，  最古老的pack会优先打包。
+***** 这种情况还是不会避免对一些巨大的pack进行repack， github还做了一个限制是当batch-size设置为2G或超过2G时， 处理这类大仓库时， 不会打包到一个更大的包中， 因为代价过于昂贵 (已合入到社区).
+***** so， 会有一些遗留问题，当超过2G后的pack就会一直存在， 这种情况如何处理——geometric packing？？？
+***** 通过 *geometric* 来进行打包，
+***** scalar中是否已经有实现或者是如何做的？
+https://public-inbox.org/git/f3b25a9927fe560b764850ea880a71932ec2af32.1598380599.git.gitgitgadget@gmail.com/
+
+
+* Diffs from Gitaly
+** 
+** 2 packs will not make a full pack
+** support write mbit when repack idx, gitaly use repack.writeBitmaps=true which is wrong
+*** repack.writeBitmaps, When true, git will write a bitmap index when packing *all* objects to disk (e.g., when git repack -a is run). This index can speed up the "counting objects" phase of subsequent packs created for clones and fetches, at the cost of some disk space and extra time spent on the initial repack. This has no effect if multiple packfiles are created. Defaults to true on bare repos, false otherwise. 如果不是打全包， 则不会生成多包索引
+*** 测试情况
+
+#+begin_src shell
+git -c pack.islandCore=e -c repack.useDeltaIslands=true -c repack.writeBitmaps=true multi-pack-index repack --batch-size 0
+#+end_src
+
+并不会生成新的全量包的bitmap:
+#+begin_src shell
+-r--r--r-- 1 git git 1507 Dec 10 10:56 pack-c71b50aa01653aae304aca2d683478b2be5b6052.pack
+-r--r--r-- 1 git git 1184 Dec 10 10:56 pack-c71b50aa01653aae304aca2d683478b2be5b6052.idx
+-r--r--r-- 1 git git  206 Dec 10 10:56 pack-c71b50aa01653aae304aca2d683478b2be5b6052.bitmap
+-r--r--r-- 1 git git 2724 Dec 10 14:35 pack-29bca0074a0dab6dc33a0e46d2ea2b8eb862f66b.pack
+-r--r--r-- 1 git git 1912 Dec 10 14:35 pack-29bca0074a0dab6dc33a0e46d2ea2b8eb862f66b.idx
+drwxr-xr-x 4 git git 4096 Dec 10 14:35 ..
+-r--r--r-- 1 git git 4199 Dec 10 14:54 pack-8d41e4f24fd442349701fa645c52c2ca26fe1626.pack
+-r--r--r-- 1 git git 2024 Dec 10 14:54 pack-8d41e4f24fd442349701fa645c52c2ca26fe1626.idx
+-rw-rw-r-- 1 git git 2220 Dec 10 14:54 multi-pack-index
+drwxr-xr-x 2 git git 4096 Dec 10 14:54 .
+#+end_src
+
+
+
+* Test:
+** ENV(172.27.66.61):
+*** Use grpcurl test in VPC， invoke satellite GRPC interface
+*** repo: /home/git/repositories/672/550/000/550672.git
+*** request:
+
+ #+begin_src shell
+   grpcurl -plaintext -protoset satellite.protoset  -d '{"repository": {"gl_repository_id": 228676,"relative_path": "676/228/000/228676.git","storage_name": "default"}}'  localhost:58081 "satellite.RepositoryService/MidxRepack"
+
+ #+end_src
+
+*** 生成protoset
+
+protoc --proto_path=. \
+    --descriptor_set_out=myservice.protoset \
+    --include_imports \
+    my/custom/server/service.proto
+
+*** command
+
+ #+begin_src shell
+   grpcurl -plaintext -protoset satellite.protoset  -d '{"repository": {"gl_repository_id": 550831,"relative_path": "831/550/000/550831.git","storage_name": "default"}}'  localhost:58081 "satellite.RepositoryService/MidxRepack"
+ #+end_src
+* New
+** protoset
+*** [x] 验证protoset中的服务： grpcurl -protoset satellite.protoset list
+*** [x]验证gRPC services： grpcurl -plaintext localhost:58081 list satellite.RepositoryService
+** midx repack
+*** TODO learn from https://github.com/git/git/blob/master/t/t5319-multi-pack-index.sh
+*** write: 根据当前的packs 生成， 支持生成mbit(默认自动生成rev)
+*** expire: packs中可能存在重复引用的对象，是否会删除 mbit？
+*** repack:
+**** --batch-size:
+***** 0 : full repack
+***** <size>: from oldest to newest, if <size>
+***** github/git maintainence/gitaly的做法: 选择次大包+1作为size，在3个包或3个以上情况下， 至少打包两个pack
+
+#+begin_src text
+Instead, we select the second-largest pack-file, and create a batch size
+that is one larger than that pack-file. If there are three or more
+pack-files, then this guarantees that at least two will be combined into
+a new pack-file.
+#+end_src
+
+***** second_large_pack_size: not repack
+
+***** second_large_pack_size + 1: repack 2 packs at lease, from oldest to newest
+
+*** 当无pack时， error: no pack files to index.
+*** 执行顺序（2个包， 次大包size 为 1507）
+***** /usr/local/bin/git --git-dir /home/git/repositories/831/550/000/550831.git multi-pack-index write
+***** /usr/local/bin/git --git-dir /home/git/repositories/831/550/000/550831.git multi-pack-index verify
+***** /usr/local/bin/git --git-dir /home/git/repositories/831/550/000/550831.git -c pack.island=r(e)fs/heads -c pack.island=r(e)fs/tags -c pack.islandCore=e -c repack.useDeltaIslands=true -c repack.writeBitmaps=false multi-pack-index repack --batch-size 1508
+
+
+
+* Conclusion
+** If an old midx exists, `git multi-pack-index write` will overwrite the old one with a new one
+** TODO why repack.writeBitmaps with "s", if only imply on a full packing
+
+
+
+#+begin_src shell
+-r--r--r-- 1 git git 13709 Dec 10 16:25 pack-aad1773e087ffbf9a66705c22bbe6affcba6c369.pack
+-rw-rw-r-- 1 git git  5060 Dec 10 16:25 multi-pack-index
+-r--r--r-- 1 git git  2748 Dec 10 16:26 pack-2f730ab6c7bd0517c67578a4cea0031debbaf843.pack
+-r--r--r-- 1 git git  2754 Dec 10 16:26 pack-5d3c6dba2d0b5cea5a0c26dd61f059873c6cf3a6.pack
+drwxr-xr-x 2 git git  4096 Dec 10 16:26 .
+drwxr-xr-x 4 git git  4096 Dec 10 16:26 ..
+
+     -r--r--r-- 1 git git 13709 Dec 10 16:25 pack-aad1773e087ffbf9a66705c22bbe6affcba6c369.pack
+     -r--r--r-- 1 git git  2754 Dec 10 16:26 pack-5d3c6dba2d0b5cea5a0c26dd61f059873c6cf3a6.pack
+     -r--r--r-- 1 git git  2748 Dec 10 16:26 pack-2f730ab6c7bd0517c67578a4cea0031debbaf843.pack
+     -r--r--r-- 1 git git   848 Dec 10 16:27 multi-pack-index-4ff82a1062f54c7a61303db5ab1cbcd523e4a731.rev
+     -r--r--r-- 1 git git  3988 Dec 10 16:27 multi-pack-index-4ff82a1062f54c7a61303db5ab1cbcd523e4a731.bitmap
+    -rw-rw-r-- 1 git git  6840 Dec 10 16:27 multi-pack-index
+    drwxr-xr-x 4 git git  4096 Dec 10 16:26 ..
+    drwxr-xr-x 2 git git  4096 Dec 10 16:27 .
+
+  // 按照2755 （second large pack size + 1）, 
+
+-r--r--r-- 1 git git 13709 Dec 10 16:25 pack-aad1773e087ffbf9a66705c22bbe6affcba6c369.pack
+-r--r--r-- 1 git git  5470 Dec 10 16:29 pack-956c6c38a0b28d4365e59e114bccb45ffd0de60a.pack
+-r--r--r-- 1 git git  2754 Dec 10 16:26 pack-5d3c6dba2d0b5cea5a0c26dd61f059873c6cf3a6.pack
+-r--r--r-- 1 git git  2748 Dec 10 16:26 pack-2f730ab6c7bd0517c67578a4cea0031debbaf843.pack
+-r--r--r-- 1 git git    32 Dec 10 16:29 pack-029d08823bd8a8eab510ad6ac75c823cfd3ed31e.pack
+-rw-rw-r-- 1 git git  6940 Dec 10 16:29 multi-pack-index
+drwxr-xr-x 4 git git  4096 Dec 10 16:26 ..
+drwxr-xr-x 2 git git  4096 Dec 10 16:29 .
+
+#+end_Src
