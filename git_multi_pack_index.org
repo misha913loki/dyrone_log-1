@@ -1,15 +1,41 @@
 * Git multiple pack index
 
-** repack
-*** --batch-size
-**** 0: Run a full repack
-***** 选择次大包 + 1的size作为batch-size:  因为最初的包可能很大， 例如clone最开始就是一个pack.
-***** 这意味着可能是第二大的包文件大小随着时间的推移而成长，最终可能超过最初克隆的包文件。 通过一个贪心算法解决， 将从从最古老的到最新的的顺序， 累加pack的size， 如不超过batch-size，则累加， 超过则停止。 所以这种情况下，当一个更新的更大的包出现后，  最古老的pack会优先打包。
-***** 这种情况还是不会避免对一些巨大的pack进行repack， github还做了一个限制是当batch-size设置为2G或超过2G时， 处理这类大仓库时， 不会打包到一个更大的包中， 因为代价过于昂贵 (已合入到社区).
-***** so， 会有一些遗留问题，当超过2G后的pack就会一直存在， 这种情况如何处理——geometric packing？？？
-***** 通过 *geometric* 来进行打包，
-***** scalar中是否已经有实现或者是如何做的？
-https://public-inbox.org/git/f3b25a9927fe560b764850ea880a71932ec2af32.1598380599.git.gitgitgadget@gmail.com/
+* Backgrounds
+** [RFC] https://lore.kernel.org/git/20180107181459.222909-1-dstolee@microsoft.com/
+
+#+begin_src shell
+  I created three copies of the Linux repo with 1, 24, and 127 packfiles
+  each using 'git repack -adfF --max-pack-size=[64m|16m]'. These copies
+  gave significant performance improvements on the following comand:
+
+      git log --oneline --raw --parents
+
+  Num Packs | Before MIDX | After MIDX |  Rel % | 1 pack %
+  ----------+-------------+------------+--------+----------
+          1 |     35.64 s |    35.28 s |  -1.0% |   -1.0%
+         24 |     90.81 s |    40.06 s | -55.9% |  +12.4%
+        127 |    257.97 s |    42.25 s | -83.6% |  +18.6%
+
+The last column is the relative difference between the MIDX-enabled repo
+and the single-pack repo. The goal of the MIDX feature is to present the
+ODB as if it was fully repacked, so there is still room for improvement.
+#+end_src
+
+#+begin_src shell
+
+   "The goal of the MIDX feature is to present the ODB as if it was fully repacked, so there is still room for improvement."
+
+  这是很重要的一句话，让ODB均以打包的形式进行存储，如果是这样的话， 仍存在提升空间。 SO why? 这是因为 github 禁用了unpackLimit，这样推送的数据均以pack的方式存储，对于大型的仓库特别是协作频繁（大型团队或大型开源项目），导致重复的或者非重复的对象存在多个不同的pack中。
+#+end_src
+
+#+begin_src shell
+    "We are using a version of this patch with an upcoming release of GVFS.This feature is particularly important in that space since GVFS performs a "prefetch" step that downloads a pack of commits and trees on a daily basis. These packfiles are placed in an alternate that is shared by all enlistments. Some users have 150+ packfiles and the MRU misses and abbreviation computations are significant. Now, GVFS manages the MIDX fileafter adding new prefetch packfiles using the following command: 
+        git midx --write --update-head --delete-expired --pack-dir=<alt>
+  As that release deploy we will gather more specific numbers on the performance improvements and report them in this thread."
+
+  GVFS中首先使用了midx来提升多包的性能问题， GVFS中又一个预下载的步骤， 用来下载commits和trees， 这些packfiles存放在一个alternate， 从而可以让所有人共享。 有些用户会同时在仓库中存在150个pack，MRU缓存无法命中， 并且短hash的计算量非常相助。
+#+end_src
+** What the MRU cache? —— oppsite of LRU
 
 
 * Diffs from Gitaly
