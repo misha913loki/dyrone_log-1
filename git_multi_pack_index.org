@@ -1,8 +1,8 @@
 * Git multiple pack index
 
-* Backgrounds
-** [RFC] https://lore.kernel.org/git/20180107181459.222909-1-dstolee@microsoft.com/
+* Backgrounds:[RFC] https://lore.kernel.org/git/20180107181459.222909-1-dstolee@microsoft.com/
 
+** Performances gap in incremental numbers of packs
 #+begin_src shell
   I created three copies of the Linux repo with 1, 24, and 127 packfiles
   each using 'git repack -adfF --max-pack-size=[64m|16m]'. These copies
@@ -21,6 +21,8 @@ and the single-pack repo. The goal of the MIDX feature is to present the
 ODB as if it was fully repacked, so there is still room for improvement.
 #+end_src
 
+** “如果让ODB均以pack形式存储的话，存在一定的提升空间”
+
 #+begin_src shell
 
    "The goal of the MIDX feature is to present the ODB as if it was fully repacked, so there is still room for improvement."
@@ -28,45 +30,42 @@ ODB as if it was fully repacked, so there is still room for improvement.
   这是很重要的一句话，让ODB均以打包的形式进行存储，如果是这样的话， 仍存在提升空间。 SO why? 这是因为 github 禁用了unpackLimit，这样推送的数据均以pack的方式存储，对于大型的仓库特别是协作频繁（大型团队或大型开源项目），导致重复的或者非重复的对象存在多个不同的pack中。
 #+end_src
 
+** 为什么会希望ODB以pack形式进行存储（Microsoft:GVFS & Github: 解压将带来内存开销） 
+
 #+begin_src shell
-    "We are using a version of this patch with an upcoming release of GVFS.This feature is particularly important in that space since GVFS performs a "prefetch" step that downloads a pack of commits and trees on a daily basis. These packfiles are placed in an alternate that is shared by all enlistments. Some users have 150+ packfiles and the MRU misses and abbreviation computations are significant. Now, GVFS manages the MIDX fileafter adding new prefetch packfiles using the following command: 
+    "We are using a version of this patch with an upcoming release of GVFS.This feature is particularly important in that space since GVFS performs a "prefetch" step that downloads a pack of commits and trees on a daily basis. These packfiles are placed in an alternate that is shared by all enlistments. Some users have 150+ packfiles and the MRU misses and abbreviation computations are significant. Now, GVFS manages the MIDX file after adding new prefetch packfiles using the following command: 
         git midx --write --update-head --delete-expired --pack-dir=<alt>
   As that release deploy we will gather more specific numbers on the performance improvements and report them in this thread."
 
   GVFS中首先使用了midx来提升多包的性能问题， GVFS中又一个预下载的步骤， 用来下载commits和trees， 这些packfiles存放在一个alternate， 从而可以让所有人共享。 有些用户会同时在仓库中存在150个pack，MRU缓存无法命中， 并且短hash的计算量非常相助。
 #+end_src
+
+
+** "Some users have 150+ packfiles and the MRU misses and abbreviation computations are significant."
+
+*** So, what's the MRU in git packfiles?
+
+阅读packfile.org
+
+
 ** What the MRU cache? —— oppsite of LRU
+*** https://github.com/git/git/search?l=C&q=MRU&type=code
 
 
 * Diffs from Gitaly
-** 
 ** 2 packs will not make a full pack
-** support write mbit when repack idx, gitaly use repack.writeBitmaps=true which is wrong
-*** repack.writeBitmaps, When true, git will write a bitmap index when packing *all* objects to disk (e.g., when git repack -a is run). This index can speed up the "counting objects" phase of subsequent packs created for clones and fetches, at the cost of some disk space and extra time spent on the initial repack. This has no effect if multiple packfiles are created. Defaults to true on bare repos, false otherwise. 如果不是打全包， 则不会生成多包索引
-*** 测试情况
+** support write mbit when repack idx, gitaly use repack.writeBitmaps=true which is wrong， repack.writeBitmaps， gitaly添加了这个`-c`配置为false, 没有什么影响
+When true, git will write a bitmap index when packing *all* objects to disk (e.g., when git repack -a is run). This index can speed up the "counting objects" phase of subsequent packs created for clones and fetches, at the cost of some disk space and extra time spent on the initial repack. This has no effect if multiple packfiles are created. Defaults to true on bare repos, false otherwise.
 
-#+begin_src shell
-git -c pack.islandCore=e -c repack.useDeltaIslands=true -c repack.writeBitmaps=true multi-pack-index repack --batch-size 0
-#+end_src
+如果不是打全包， 则不会生成多包索引
 
-并不会生成新的全量包的bitmap:
-#+begin_src shell
--r--r--r-- 1 git git 1507 Dec 10 10:56 pack-c71b50aa01653aae304aca2d683478b2be5b6052.pack
--r--r--r-- 1 git git 1184 Dec 10 10:56 pack-c71b50aa01653aae304aca2d683478b2be5b6052.idx
--r--r--r-- 1 git git  206 Dec 10 10:56 pack-c71b50aa01653aae304aca2d683478b2be5b6052.bitmap
--r--r--r-- 1 git git 2724 Dec 10 14:35 pack-29bca0074a0dab6dc33a0e46d2ea2b8eb862f66b.pack
--r--r--r-- 1 git git 1912 Dec 10 14:35 pack-29bca0074a0dab6dc33a0e46d2ea2b8eb862f66b.idx
-drwxr-xr-x 4 git git 4096 Dec 10 14:35 ..
--r--r--r-- 1 git git 4199 Dec 10 14:54 pack-8d41e4f24fd442349701fa645c52c2ca26fe1626.pack
--r--r--r-- 1 git git 2024 Dec 10 14:54 pack-8d41e4f24fd442349701fa645c52c2ca26fe1626.idx
--rw-rw-r-- 1 git git 2220 Dec 10 14:54 multi-pack-index
-drwxr-xr-x 2 git git 4096 Dec 10 14:54 .
-#+end_src
-
+** delta_island 的配置
+*** 为pack.island新增 "r(e)fs/merge-requests"(原有gitaly实现为pack.island 设置为 "r(e)fs/tags“ 和 "r(e)fs/heads“, pack.islandCore 设置为"e"，repack.useDeltaIslands 设置为 true)
+*** 为write参数新增 "--bitmap" 选项
 
 
 * Test:
-** ENV(172.27.66.61):
+** [satellite]ENV(172.27.66.61):
 *** Use grpcurl test in VPC， invoke satellite GRPC interface
 *** repo: /home/git/repositories/672/550/000/550672.git
 *** request:
@@ -86,18 +85,12 @@ protoc --proto_path=. \
 *** command
 
  #+begin_src shell
-   grpcurl -plaintext -protoset satellite.protoset  -d '{"repository": {"gl_repository_id": 550831,"relative_path": "831/550/000/550831.git","storage_name": "default"}}'  localhost:58081 "satellite.RepositoryService/MidxRepack"
+grpcurl -plaintext -protoset satellite.protoset  -d '{"repository": {"gl_repository_id": 551613,"relative_path": "613/551/000/551613.git","storage_name": "default"}}'  localhost:58081 "satellite.RepositoryService/MidxRepack"
  #+end_src
-* New
-** protoset
-*** [x] 验证protoset中的服务： grpcurl -protoset satellite.protoset list
-*** [x]验证gRPC services： grpcurl -plaintext localhost:58081 list satellite.RepositoryService
-** midx repack
-*** TODO learn from https://github.com/git/git/blob/master/t/t5319-multi-pack-index.sh
-*** write: 根据当前的packs 生成， 支持生成mbit(默认自动生成rev)
-*** expire: packs中可能存在重复引用的对象，是否会删除 mbit？
-*** repack:
-**** --batch-size:
+
+** [repack]
+*** 当无pack时， error: no pack files to index.
+*** --batch-size:
 ***** 0 : full repack
 ***** <size>: from oldest to newest, if <size>
 ***** github/git maintainence/gitaly的做法: 选择次大包+1作为size，在3个包或3个以上情况下， 至少打包两个pack
@@ -113,18 +106,52 @@ a new pack-file.
 
 ***** second_large_pack_size + 1: repack 2 packs at lease, from oldest to newest
 
-*** 当无pack时， error: no pack files to index.
-*** 执行顺序（2个包， 次大包size 为 1507）
-***** /usr/local/bin/git --git-dir /home/git/repositories/831/550/000/550831.git multi-pack-index write
-***** /usr/local/bin/git --git-dir /home/git/repositories/831/550/000/550831.git multi-pack-index verify
-***** /usr/local/bin/git --git-dir /home/git/repositories/831/550/000/550831.git -c pack.island=r(e)fs/heads -c pack.island=r(e)fs/tags -c pack.islandCore=e -c repack.useDeltaIslands=true -c repack.writeBitmaps=false multi-pack-index repack --batch-size 1508
+** [write]
+*** 默认自动生成mbit和rev
+
+*** 连带生成mbit， 第一次生成耗时较久；
+
+#+begin_src shell
+  time git multi-pack-index write --bitmap                                             
+  Selecting bitmap commits: 1058205, done.
+  Building bitmaps: 100% (516/516), done.
+  LANG=en_GB git multi-pack-index write --bitmap  403.36s user 8.57s system 95% cpu 7:11.55 total
+#+end_src
+*** 重新生成midx， 对于大库， 可以复用现有midx不会从头生成， 时间较为可控
+#+begin_src text
+➜  pack git:(master) ✗ time git multi-pack-index write --no-bitmap                                          <<<
+LANG=en_GB git multi-pack-index write --no-bitmap  2.07s user 0.30s system 94% cpu 2.513 total
+#+end_src
+*** 测试添加一个新的pack，再次执行, 时间缩短3倍左右；
+
+#+begin_src shell
+➜  pack git:(master) ✗ time git multi-pack-index write --bitmap --progress                                  <<<
+Selecting bitmap commits: 1058205, done.
+Building bitmaps: 100% (516/516), done.
+LANG=en_GB git multi-pack-index write --bitmap --progress  134.39s user 3.72s system 98% cpu 2:19.53 total
+#+end_src
+
+*** 测试生成commit-graph, 再次执行, 时间与无commit-graph相比并无明显差别
+#+begin_src shell
+➜  pack git:(master) ✗ time git multi-pack-index write --bitmap --progress                                  <<<
+Selecting bitmap commits: 1058205, done.
+Building bitmaps: 100% (516/516), done.
+LANG=en_GB git multi-pack-index write --bitmap --progress  146.71s user 3.28s system 99% cpu 2:30.71 total
+#+end_src
+
+
+* Learn
+** protoset
+*** [x] 验证protoset中的服务： grpcurl -protoset satellite.protoset list
+*** [x]验证gRPC services： grpcurl -plaintext localhost:58081 list satellite.RepositoryService
+** midx repack
+*** TODO learn from https://github.com/git/git/blob/master/t/t5319-multi-pack-index.sh
 
 
 
 * Conclusion
 ** If an old midx exists, `git multi-pack-index write` will overwrite the old one with a new one
 ** TODO why repack.writeBitmaps with "s", if only imply on a full packing
-
 
 
 #+begin_src shell

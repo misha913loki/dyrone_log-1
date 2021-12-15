@@ -1,0 +1,103 @@
+* MRU Cache
+
+** Data preparation
+创建三个提交对应三个包：
+
+
+#+begin_src shell
+  ➜  pack git:(master) ls -ltra |grep -e "\.pack"                                                        
+  -r--r--r--  1 tenglong.tl  staff   294 12 14 14:20 pack-4a0e399c1d9261752a0bb00daea370bfcd27df68.pack
+  -r--r--r--  1 tenglong.tl  staff   346 12 14 14:21 pack-63c4fb1b3e76806678cc7efbffd0db884b4c73b0.pack
+  -r--r--r--  1 tenglong.tl  staff   350 12 14 14:22 pack-81121c79416071df4fc2347e899fd627c0d4d664.pack
+#+end_src
+
+
+14:22 分的包 ：pack-3
+14:21 分的包 ：pack-2
+14:20 分的包： pack-1
+
+三个包中分别包含的对象为:
+
+pack-3: pack-81121c79416071df4fc2347e899fd627c0d4d664.pack
+
+#+begin_src shell
+44229bada52ad61095ca9e5560900073f2d5fb5b commit 239 252 12
+a2fb22b307357c045f3719f2a3fc1ebeba086663 blob   8 20 264
+bc1ea87ed9e763f284bd97ae9e0b9d077e28e9f9 tree   33 46 284
+#+end_src
+
+pack-2: pack-63c4fb1b3e76806678cc7efbffd0db884b4c73b0.pack
+
+#+begin_src shell
+9925b53f3f14beccc84cda8d4b46efa0a68ff79e commit 239 252 12
+6ed281c757a969ffe22f3dcfa5830c532479c726 blob   4 16 264
+adf7c819e2c304e65bb9bfd082f8205924080ab5 tree   33 46 280
+#+end_src
+
+pack-1: pack-4a0e399c1d9261752a0bb00daea370bfcd27df68.pack
+
+#+begin_src shell
+56bc8de01efdf41954d6e8470998dc1b5e5b66a2 commit 189 202 12  -> commit C
+d00491fd7e5bb6fa28c517a0bb32b8b506539d4d blob   2 14 214 -> blob C
+38fd29697b220f7e4ca15b044c3222eefe5afdc1 tree   33 46 228 -> tree C
+#+end_src
+
+
+** Traverse order
+
+按照git traverse的顺序为:
+
+commit C-> commit B -> commit A -> tree C -> tree B -> tree A-> blob C -> blob B -> blob A
+
+** MRU Default Packs Order (次新， 时间：新->老)
+
+pack 2 -> pack 3 -> pack 1
+
+*** BACKLOG  第二次测试， 从倒数第二个pack开始（次新）?? 为什么是次新
+
+
+** MRU cache operation during traverse 
+
+MRU本质时一个双端队列， remove操作将对应pack从tail移除， 从head加入， 从而完成MRU策略。
+
+遍历MRU的双端队列，如果当前的pack中没有找到该对象， 继续遍历MRU下一个元素（pack）， 当对象在pack中找到后， 将pack执行remove, 从而让下一个对象从下一个包进行寻找（与LRU策略相反）。
+
+
+ 根据刚才的对象遍历顺序， 结合packfiles的情况有：
+ 
+
+ commit A -> commit B -> commit C -> tree A -> tree B -> tree C -> blob A -> blob B -> blob C
+
+
+ pack 2 (pack-63c4fb1b3e76806678cc7efbffd0db884b4c73b0.pack)
+
+              -> pack 3 (pack-81121c79416071df4fc2347e899fd627c0d4d664.pack)
+
+                              -> pack 1(pack-4a0e399c1d9261752a0bb00daea370bfcd27df68.pack)
+
+ ==>
+ #+begin_src java
+
+   // initial MRU list: pack-2[c] -> pack-3 -> pack-1
+   // pack-2 -> pack-3[c] -> pack-1 => found =>  pack-3 -> pack-2 -> pack-1[current]
+   // ...
+[dyrone] oid: 44229bada52ad61095ca9e5560900073f2d5fb5b, mru: pack name: /Users/tenglong.tl/Downloads/git_mru.git/.git/objects/pack/pack-63c4fb1b3e76806678cc7efbffd0db884b4c73b0.pack, exclude: 0, want: -1
+[dyrone] oid: 44229bada52ad61095ca9e5560900073f2d5fb5b, mru: pack name: /Users/tenglong.tl/Downloads/git_mru.git/.git/objects/pack/pack-81121c79416071df4fc2347e899fd627c0d4d664.pack, exclude: 0, want: 1
+[dyrone] oid: 9925b53f3f14beccc84cda8d4b46efa0a68ff79e, mru: pack name: /Users/tenglong.tl/Downloads/git_mru.git/.git/objects/pack/pack-4a0e399c1d9261752a0bb00daea370bfcd27df68.pack, exclude: 0, want: -1
+[dyrone] oid: 9925b53f3f14beccc84cda8d4b46efa0a68ff79e, mru: pack name: /Users/tenglong.tl/Downloads/git_mru.git/.git/objects/pack/pack-81121c79416071df4fc2347e899fd627c0d4d664.pack, exclude: 0, want: -1
+[dyrone] oid: 9925b53f3f14beccc84cda8d4b46efa0a68ff79e, mru: pack name: /Users/tenglong.tl/Downloads/git_mru.git/.git/objects/pack/pack-63c4fb1b3e76806678cc7efbffd0db884b4c73b0.pack, exclude: 0, want: 1
+[dyrone] oid: 56bc8de01efdf41954d6e8470998dc1b5e5b66a2, mru: pack name: /Users/tenglong.tl/Downloads/git_mru.git/.git/objects/pack/pack-63c4fb1b3e76806678cc7efbffd0db884b4c73b0.pack, exclude: 0, want: -1
+[dyrone] oid: 56bc8de01efdf41954d6e8470998dc1b5e5b66a2, mru: pack name: /Users/tenglong.tl/Downloads/git_mru.git/.git/objects/pack/pack-4a0e399c1d9261752a0bb00daea370bfcd27df68.pack, exclude: 0, want: 1
+[dyrone] oid: bc1ea87ed9e763f284bd97ae9e0b9d077e28e9f9, mru: pack name: /Users/tenglong.tl/Downloads/git_mru.git/.git/objects/pack/pack-81121c79416071df4fc2347e899fd627c0d4d664.pack, exclude: 0, want: 1
+[dyrone] oid: a2fb22b307357c045f3719f2a3fc1ebeba086663, mru: pack name: /Users/tenglong.tl/Downloads/git_mru.git/.git/objects/pack/pack-81121c79416071df4fc2347e899fd627c0d4d664.pack, exclude: 0, want: 1
+[dyrone] oid: adf7c819e2c304e65bb9bfd082f8205924080ab5, mru: pack name: /Users/tenglong.tl/Downloads/git_mru.git/.git/objects/pack/pack-63c4fb1b3e76806678cc7efbffd0db884b4c73b0.pack, exclude: 0, want: 1
+[dyrone] oid: 6ed281c757a969ffe22f3dcfa5830c532479c726, mru: pack name: /Users/tenglong.tl/Downloads/git_mru.git/.git/objects/pack/pack-63c4fb1b3e76806678cc7efbffd0db884b4c73b0.pack, exclude: 0, want: 1
+[dyrone] oid: 38fd29697b220f7e4ca15b044c3222eefe5afdc1, mru: pack name: /Users/tenglong.tl/Downloads/git_mru.git/.git/objects/pack/pack-4a0e399c1d9261752a0bb00daea370bfcd27df68.pack, exclude: 0, want: 1
+[dyrone] oid: d00491fd7e5bb6fa28c517a0bb32b8b506539d4d, mru: pack name: /Users/tenglong.tl/Downloads/git_mru.git/.git/objects/pack/pack-4a0e399c1d9261752a0bb00daea370bfcd27df68.pack, exclude: 0, want: 1
+ #+end_src
+
+
+**  Conclusion
+*** 在禁用解压loose的情况下（Github）， 对于commit的遍历比较友好
+*** 如果很多包的情况下， 会降低MRU cache的命中率， 例如GVFS的场景或者Github forks的场景会有性能影响
+*** MIDX可以解决这个问题
