@@ -40,10 +40,12 @@ ODB as if it was fully repacked, so there is still room for improvement.
   GVFS中首先使用了midx来提升多包的性能问题， GVFS中又一个预下载的步骤， 用来下载commits和trees， 这些packfiles存放在一个alternate， 从而可以让所有人共享。 有些用户会同时在仓库中存在150个pack，MRU缓存无法命中， 并且短hash的计算量非常相助。
 #+end_src
 
-
 ** "Some users have 150+ packfiles and the MRU misses and abbreviation computations are significant."
 
-*** So, what's the MRU in git packfiles?
+*** So, what's the MRU in git packfiles? -more likely to have a miss on our most-recently-used packfile
+*** Because abbreviations need to inspect every packfile
+
+** For some large repositories, repacking into a single packfile is not feasible due to storage space or excessive repack times.
 
 阅读packfile.org
 
@@ -52,7 +54,115 @@ ODB as if it was fully repacked, so there is still room for improvement.
 *** https://github.com/git/git/search?l=C&q=MRU&type=code
 
 
-* Diffs from Gitaly
+* Design Principles
+
+** 完全兼容设计，单独的文件
+*** 对老版本兼容
+*** 对其他不支持midx的平台完全兼容
+*** 随时删除midx对当前工作无影响
+
+** 复杂度：寻找任意对象复杂度为 O(log N)
+** midx 文件结构
+*** packfiles 列表， 从0开始， 按照字典序
+*  Implementations
+** GET
+*** builtin/pack-object.c#want_object_in_pack
+#+begin_src c
+	for (m = get_multi_pack_index(the_repository); m; m = m->next) {
+		struct pack_entry e;
+		if (fill_midx_entry(the_repository, oid, &e, m)) {
+			want = want_object_in_pack_one(e.p, oid, exclude, found_pack, found_offset);
+			if (want != -1)
+				return want;
+		}
+	}
+#+end_src
+
+#+begin_src c
+
+struct multi_pack_index {
+	struct multi_pack_index *next; // support multi midx in furture
+
+	const unsigned char *data;
+	size_t data_len;
+
+	const uint32_t *revindex_data;
+	const uint32_t *revindex_map;
+	size_t revindex_len;
+
+	uint32_t signature;
+	unsigned char version;
+	unsigned char hash_len;
+	unsigned char num_chunks;
+	uint32_t num_packs;
+	uint32_t num_objects; // total recorded number of objects in this midx
+
+	int local;
+
+	const unsigned char *chunk_pack_names;
+	const uint32_t *chunk_oid_fanout;
+	const unsigned char *chunk_oid_lookup;
+	const unsigned char *chunk_object_offsets;
+	const unsigned char *chunk_large_offsets;
+
+	const char **pack_names;
+	struct packed_git **packs; // packs info recorded in mdix
+	char object_dir[FLEX_ARRAY];
+};
+#+end_src
+
+*** midx.c#fill_midx_entry
+
+#+begin_src c
+
+  // Find object in midx, if find , package to a pack_entry to let it be found in a specific pack.
+
+
+  int fill_midx_entry(struct repository * r,
+                      const struct object_id *oid,
+                      struct pack_entry *e,
+                      struct multi_pack_index *m)
+  {
+          uint32_t pos;
+          uint32_t pack_int_id;
+          struct packed_git *p;
+
+          if (!bsearch_midx(oid, m, &pos)) // 查找object是否可在本midx中找到
+                  return 0;
+
+          if (pos >= m->num_objects)
+                  return 0;
+
+          pack_int_id = nth_midxed_pack_int_id(m, pos);
+
+          if (prepare_midx_pack(r, m, pack_int_id)) // 校验pack是否合法, 并添加到`packed_git`和`packed_git_mru`
+                  return 0;
+          p = m->packs[pack_int_id];
+
+          /*
+          ,* We are about to tell the caller where they can locate the
+          ,* requested object.  We better make sure the packfile is
+          ,* still here and can be accessed before supplying that
+          ,* answer, as it may have been deleted since the MIDX was
+          ,* loaded!
+          ,*/
+          if (!is_pack_valid(p))
+                  return 0;
+
+          if (oidset_size(&p->bad_objects) &&
+              oidset_contains(&p->bad_objects, oid))
+                  return 0;
+
+          e->offset = nth_midxed_offset(m, pos); 
+          e->p = p;
+
+          return 1;
+  }
+#+end_src
+
+** Generate
+*** 
+* Satellite Diffs from Gitaly
 ** 2 packs will not make a full pack
 ** support write mbit when repack idx, gitaly use repack.writeBitmaps=true which is wrong， repack.writeBitmaps， gitaly添加了这个`-c`配置为false, 没有什么影响
 When true, git will write a bitmap index when packing *all* objects to disk (e.g., when git repack -a is run). This index can speed up the "counting objects" phase of subsequent packs created for clones and fetches, at the cost of some disk space and extra time spent on the initial repack. This has no effect if multiple packfiles are created. Defaults to true on bare repos, false otherwise.
