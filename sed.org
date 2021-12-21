@@ -1,0 +1,20 @@
+ void write_name_quoted(const char *name, FILE *fp, int terminator)
+{
+	if (terminator) {
+		quote_c_style(name, NULL, fp, 0);
+	} else {
+		fputs(name, fp);
+	}
+	fputc(terminator, fp);
+}
+
+void write_name_quoted_relative(const char *name, const char *prefix,
+				FILE *fp, int terminator)
+{
+	struct strbuf sb = STRBUF_INIT;
+
+	name = relative_path(name, prefix, &sb);
+	write_name_quoted(name, fp, terminator);
+
+	strbuf_release(&sb);
+}

@@ -1,0 +1,149 @@
+* Links
+*** https://devblogs.microsoft.com/devops/supercharging-the-git-commit-graph/
+*** https://devblogs.microsoft.com/devops/supercharging-the-git-commit-graph-ii-file-format/
+***** Structure of cg file:
+****** Commit IDs: sorted and can be indexed as "Graph Position"
+****** Fanout: 256 entries, The fanout value F[i] stores the number of commits whose first byte (or first two hex digits) of their ID is at most i. Thus, F[0xff] stores the total number of commits. This allows us to seed the initial values of the binary search into the commit IDs.
+****** Commit Data:
+******* Root Tree ID
+******* Commit Date
+******* "Graph Positions" of 2 parents as integers (not commit id, avoiding perform a binary search again)
+****** Octopus Edges:
+******* Second parent value of Commit Data : a position to octopus edges list to store the parents ( null-termination trick to let the list of parents be arbitrarily large)
+
+***** Performance gains:
+****** parsing the commit-graph file INSTEAD of raw commits
+******* D: parsing this tabular data faster than unzipping and parsing the plain-text commit information
+******* A: only need to do the binary search once for each of the starting positions of our walk (if commit exists in cg file , it's parents must be too)
+****** from avoiding object database lookups
+****** walking N commits went from O(N log N) as packfile  to O(N) as commit-graph
+****** 5-10x speedup for certain Git commands.
+
+*** https://devblogs.microsoft.com/devops/supercharging-the-git-commit-graph-iii-generations/
+
+***** Change of the structure to cg file
+******  Commit Data:
+******* Commit Date 8 bytes:  split up to
+******** commit date
+******** generation number
+***** Why not just use commit date
+****** imsynchronized clock
+***** Design of generation number
+****** gen(Root) = 1
+****** If gen(A) < gen(B) then A cannot reach B.
+****** use generation to walk in order of descending instead of commit date
+***** "Can X Reach Y ?"
+****** git push --force:
+******* if remote has a commit that local doesn't have on the same branch, push will fail,  then you need pull first or force push.
+******* So the "X" here is the revision on server, "Y" is the revision on the local branch.  "Can X Reach Y ?" will perform a commit walk ordered by commit date starting from "X" and if "Y" appears during this walk , the result is YES, the push is safe because server already have the base X, if not, a force push may remove important history.
+****** git status
+*****  Using generation number for topo order (for accelerate)
+****** topo order: 让所有的边都朝下指向， 更通俗的讲， 普通commit必须在它parent之前出现（https://en.wikipedia.org/wiki/Topological_sorting）， 让你执行 `git log --graph`的时候，实际上git就会帮你完成topological sort。
+****** TODO unfinished read
+
+***** Performance gains:
+****** force-push: 典型的 X是否可以reach Y的场景，注意 reach的概念指的是沿着DAG的边(edge)的方向(generation->root)是否可达, 如果可达，我们叫做"X can reach Y" 或者 "Y is reachable by X".  回到push， 
+*** https://devblogs.microsoft.com/devops/super-charging-the-git-commit-graph-iv-bloom-filters/
+***** Why? -apply a filter to our results
+***** Scenes:  `git log master -- The/Path/To/My/File.txt`
+******  If the path is not modified very often...
+****** In the example above, we need to walk five trees: the root tree and four nested trees for the directories above “File.txt”.
+***** How to show the specific path's commits (log)
+******   [key problem] determine if a path is different between a commit and a parent is very expensive, especially as the number of subfolders increases (compare trees)
+***** 一种方式是在提交时， 用数据库记录"commit"<->"modified paths"的关联关系, 但是这会占用大量的空间（60 GB just for the Linux kernel repository）
+***** 另一种希望的方式是， 希望数据库可以保存两个结果：
+****** 1. 给定commit和其first-parent， 某一个path是否没有更新
+****** 2. 这个path在这个提交和它的第一个父节点之间“可能”是不同的。
+******  上面第2点提到的"可能"就是我们使用bloom-filters的原因。如果我们明确commit和first-parent“可能不一样”，我们就可以进一步来确认这个答案。
+***** About bloom filter
+****** 基本思想：
+******* 1. 通过Hash函数将一个元素映射成一个位阵列（Bit Array）中的一个点。
+******* 2. 这样一来，我们只要看看这个点是不是 1 就知道可以集合中有没有它了，如果一个点不匹配，那么一定没有； 相反如果所有的点都有，那么在集合中可能存在（因为hash冲突的原因， 存在误识别率）。
+******* 3. 如果这就是布隆过滤器的基本思想。
+****** 优势：空间效率和查询时间
+******* 没有识别错误的情况，即假反例（False negatives），如果某个元素确实没有在该集合中，那么Bloom Filter 是不会报告该元素存在于集合中的，所以不会漏报
+******* 查询查询时间复杂度：O(1)
+******* Hash函数互相之间没有关系， 方便由硬件并行实现
+******* bloom filter不需要存储元素本身，某些对安全要求严格的场合有优势
+******* k (hash函数个数)和 m (数组大小) 相同，使用同一组 Hash 函数的两个布隆过滤器的交并差运算可以使用位操作进行
+****** 劣势：
+******* 存在一定误识别率（false-positive）,即Bloom Filter报告某一元素存在于某集合中，但是实际上该元素并不在集合中, 其根源在于在相同的bit位被多个不同的element置1; 
+******* 随着存入的元素数量增加，误算率随之增加；
+******* 删除困难； 一般情况下不能从布隆过滤器中删除元素， 因为bit位并不是由某一个特定element独占的. 我们很容易想到把位列阵变成整数数组，每插入一个元素相应的计数器加1, 这样删除元素时将计数器减掉就可以了。然而要保证安全的删除元素并非如此简单。首先我们必须保证删除的元素的确在布隆过滤器里面. 这一点单凭这个过滤器是无法保证的。另外计数器回绕也会造成问题。
+****** Hash Collision:
+******* 前提： Hash 函数是良好的
+******* 冲突概率计算： 如果我们的位阵列长度为 m 个点，那么如果我们想将冲突率降低到例如 1%, 这个散列表就只能容纳 m/100 个元素，显然这就不叫空间有效了 (Space-efficient).
+******* 解决方法也简单，就是使用多个Hash, so， 如果它们有一个说元素不在集合中，那肯定就不在。如果它们都说在，虽然存在它们在说谎的可能，但是直觉判断这🀄️事情的概率比较低。
+****** 参数选择：
+******* 1, when n/m = 10 （the number of bits per set element) and k = 7 (hash functions) the false positive probabilityis just over 0.008. （http://theory.stanford.edu/~rinap/papers/esa2006b.pdf）
+******* 2,  So, if we expect the Bloom filter to contain N elements, reserve at least 10N bits. These bits all start in the “off” position.
+****** 技术对比：
+******* hashtable： hash表是常用的选型， 但是缺点是会暂用大量的存储空间（比如说，一个象 Yahoo,Hotmail 和 Gmai 那样的公众电子邮件（email）提供商，总是需要过滤来自发送垃圾邮件的人（spamer）的垃圾邮件。一个办法就是记录下那些发垃圾邮件的 email 地址。由于那些发送者不停地在注册新的地址，全世界少说也有几十亿个发垃圾邮件的地址，将他们都存起来则需要大量的网络服务器。如果用哈希表，每存储一亿 个 email 地址， 就需要 1.6GB 的内存（用哈希表实现的具体办法是将每一个 email 地址对应成一个八字节的信息指纹（详见：googlechinablog.com/2006/08/blog-post.html）， 然后将这些信息指纹存入哈希表，由于哈希表的存储效率一般只有 50%，因此一个 email 地址需要占用十六个字节。一亿个地址大约要 1.6GB， 即十六亿字节的内存）。因此存贮几十亿个邮件地址可能需要上百 GB 的内存。除非是超级计算机，一般服务器是无法存储的）
+****** 用例场景：
+******* Google 著名的分布式数据库 Bigtable 使用了布隆过滤器来查找不存在的行或列，以减少磁盘查找的IO次数［3］。
+******* Squid 网页代理缓存服务器在 cache digests 中使用了也布隆过滤器［4］。
+******* Venti 文档存储系统也采用布隆过滤器来检测先前存储的数据［5］。
+******* SPIN 模型检测器也使用布隆过滤器在大规模验证问题时跟踪可达状态空间［6］。
+******* Google Chrome浏览器使用了布隆过滤器加速安全浏览服务［7］。
+******* 业务场景中判断用户是否阅读多某视频或者文章，比如抖音或者头条，当然会导致一定的误判， 但不会让用户看到重复的内容。 
+******* 在很多Key-Value系统中也使用了布隆过滤器来加快查询过程，如 Hbase，Accumulo，Leveldb，一般而言，Value 保存在磁盘中，访问磁盘需要花费大量时间，然而使用布隆过滤器可以快速判断某个Key对应的Value是否存在，因此可以避免很多不必要的磁盘IO操作，只是引入布隆过滤器会带来一定的内存消耗，下图是在Key-Value系统中布隆过滤器的典型使用
+
+
+#+begin_src c
+       Do you have 'key1' ? -----------> Filter : NO
+                    "Do not have" <-----------
+
+       Do you have 'key2' ? -----------> Filter : YES    -----------> Storage : YES
+                    "Do have"     <---------------------------------       Yes exists    <-----------
+      
+        Do you have 'key3' ? -----------> Filter : YES    -----------> Storage : No
+                  "Do not have"     <----------------------------------  non-exists    <-----------      
+#+end_src
+
+
+***** bloom filter如何解决这个问题
+******* If the number of changed paths is not too large (we use 512 as a limit in VSTS) then create a Bloom filter and seed it with the values for those paths
+******* If there are more than 512 changes, then we mark the commit as “Bloom filter too large” and check every path
+******* one commit one bloom filter , “changed paths on each commit” as elements
+***** Benifts
+******* 100x by avoiding 99% of the computation theoretically.
+******* In reality this is closer to a 6x speedup for a random sample of paths.
+******* observed speedups as high as 20x for rarely-changed paths.
+******* less than 100MB of extra storage for a repository the size of the Linux kernel.
+
+*** https://devblogs.microsoft.com/devops/updates-to-the-git-commit-graph-feature/
+***** rewriting the entire file is slow sometimes, so it also support multi-commit-graph
+***** we can use `--split` to ceate a incremental commit-graph file
+#+begin_src shell
+  git commit-graph write --reachable
+  git commit --allow-empty -m "empty"
+  git commit-graph write --reachable --split
+
+The
+
+‐‐split option enables creating a chain of commit-graph files. If you ever run the command without the ‐‐split option, then the chain will merge into a single file.
+#+end_src
+***** we can use `--size-multiple=<X>` and `--max-commits=<M>` to merge commit-graph files
+*** https://github.blog/2020-07-27-highlights-from-git-2-28/#changed-path-bloom-filters
+*** [RFC] https://public-inbox.org/git/fca023a3-f849-4be8-db42-7027bfe7b0dc@gmail.com/
+
+
+* Scences
+*** git status (need to compute merge bases on server)
+*** git log --graph (reports in topological order, algorithm walks every reachable commit before displaying a single commit to the user. Like Azure support a graph view of commits topotical ordered, filters like author/date_interval )
+*** git log master -- The/Path/To/My/File.txt (on the repo main page)
+* Configurations
+
+* What I Learn?
+
+***** 《the commit which has 66 parents in Linux Kernel》: https://www.destroyallsoftware.com/blog/2017/the-biggest-and-weirdest-commits-in-linux-kernel-git-history
+***** https://github.com/Microsoft/perfview the performance analysis tool mentioned in article by stolee
+***** https://en.wikipedia.org/wiki/Depth-first_search DFS argorithem
+***** how git find merge bases between A and B:  (https://devblogs.microsoft.com/devops/supercharging-the-git-commit-graph-iii-generations/#using-generation-number-in-merge-base-questions)
+******  1. First walk: find boundary commits that both A and B are reachable then stop ( mark parents of boundaries as "uninteresting to specify the range of the second walk")
+****** 2. Second walk: from A and B, to find the first interesting commit that is reachable from both.
+****** 3. 由于时钟偏差可以提供不正确的提交顺序，我们可能需要遍历两次提交:一次是分发“从A可达”标记，第二次是分发“从B可达”标记。
+***** 《git log history simplification》 https://docs.microsoft.com/en-us/azure/devops/repos/git/git-log-history-simplification?view=azure-devops&viewFallbackFrom=vsts
+*****  《bloom filter》
+****** https://en.wikipedia.org/wiki/Bloom_filter
+****** https://www.cnblogs.com/liyulong1982/p/6013002.html
