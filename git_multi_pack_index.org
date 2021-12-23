@@ -63,7 +63,27 @@ ODB as if it was fully repacked, so there is still room for improvement.
 
 ** 复杂度：寻找任意对象复杂度为 O(log N)
 ** midx 文件结构
-*** packfiles 列表， 从0开始， 按照字典序
+*** HEADER: 12-byte
+**** [4-byte]  signature : {'M', 'I', 'D', 'X'}
+**** [1-byte]  version: 1 (currrent)
+**** [1-byte]  OID version : 1 or 2 (SHA-1 or SHA-256)
+**** [1-byte]  number of "chunks"
+**** [1-byte]  number of base midx files: always 0 (current)
+**** [4-byte]  number of pack files
+*** Chunck Lookup: (C + 1) * 12-byte
+**** [4-byte]  chunk id. Value 0 is a terminating label.
+**** [8-byte]  chunk start offset (Chunks are provided in file-order, so you can infer the length using the next chunk position if necessary) https://git-scm.com/docs/chunk-format
+*** Chunk Data:
+**** [var-byte] Packfile names
+***** storage: concatenated, null-terminated strings
+***** order: lexicographic
+***** 4-bytes-clean: last chunk for alignment
+**** [255 * 4-byte] Fanout. F[i] store number of OIDs with first byte(OID前两位) at most i (包括之前的总量)， F[255] stores the total number of object.
+**** [?-byte] OID look up:  storage all the OIDs
+***** order : lexicographic
+**** [8-byte] Object Offsets.
+***** [4-byte] the pack-int-id for the pack storing this object.
+***** [4-byte] the offset within the pack
 *  Implementations
 ** GET
 *** builtin/pack-object.c#want_object_in_pack
@@ -158,6 +178,17 @@ struct multi_pack_index {
 
           return 1;
   }
+#+end_src
+
+** Verify (#cmd_multi_pack_index_verify)
+
+#+begin_src c
+  struct multi_pack_index *load_multi_pack_index(const char *object_dir, int local)
+#+end_src
+
+核心逻辑:
+#+begin_src c
+	struct multi_pack_index *m = load_multi_pack_index(object_dir, 1);
 #+end_src
 
 ** Generate

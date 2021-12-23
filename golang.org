@@ -1,0 +1,37 @@
+* io
+** 高效获取文件行数
+https://newbedev.com/golang-how-do-i-determine-the-number-of-lines-in-a-file-efficiently
+https://stackoverflow.com/questions/24562942/golang-how-do-i-determine-the-number-of-lines-in-a-file-efficiently
+
+
+#+begin_src go
+
+/*
+ * BenchmarkBuffioScan   500      6408963 ns/op     4208 B/op    2 allocs/op
+ * BenchmarkBytesCount   500      4323397 ns/op     8200 B/op    1 allocs/op
+ * BenchmarkBytes32k     500      3650818 ns/op     65545 B/op   1 allocs/op
+ */
+func lineCounter() (int, error) {
+	f, err := os.Open(commitGraphchain)
+	defer f.Close()
+	if err != nil {
+		return 0, fmt.Errorf("open commit-graph-chain error: %v", err)
+	}
+	// especially do not need a big buffer ((40+1)*30 is enough actually,
+	// for SHA-1 is 40 bytes per line and SHA-256 is 64 bytes per line),
+	// but we will alloc 32K for the best speed
+	buf := make([]byte, 32*1024)
+	count := 0
+	lineSep := []byte{'\n'}
+	for {
+		c, err := f.Read(buf)
+		count += bytes.Count(buf[:c], lineSep)
+		if err != nil && err == io.EOF {
+			return count, nil
+		}
+		if err != nil {
+			return 0, err
+		}
+	}
+}
+#+end_src

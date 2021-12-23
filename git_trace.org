@@ -1,51 +1,62 @@
-我们可以通过 GIT_TRACE* 环境变量打开 Git 命令的诊断信息，而在2019年发布的 Git v2.22.0 引入了新的诊断框架 trace2 以取代之前的 trace，并引入新的环境变量 GIT_TRACE2*。
+# Created 2021-12-22 三 11:41
+#+TITLE: 
+#+AUTHOR: tenglong.tl
+我们可以通过 `GIT_TRACE*` 环境变量打开 Git 命令的诊断信息，而在2019年发布的 Git v2.22.0 引入了新的诊断框架 trace2 以取代之前的 trace，并引入新的环境变量 `GIT_TRACE2*`。
 那么如何在 Git 代码中加入诊断信息？如何打开 Git 的诊断开关？为什么 Git 引入 trace2 取代 trace？trace 全部被 trace2 取代了么？
 
-* trace
-Git 的早期版本（v1.4.3, 2006/10）便引入了诊断开关，通过设置 GIT_TRACE* 环境变量，打开诊断输出。例如：
+Git 的早期版本（v1.4.3, 2006/10）便引入了诊断开关，通过设置 `GIT_TRACE*` 环境变量，打开诊断输出。例如：
+
 #+begin_src shell
 $ GIT_TRACE=1 git version
-19:25:34.318204 git.c:455               trace: built-in: git version
-git version 2.34.1.8.g35151cf072
+14:35:39.511403 git.c:455               trace: built-in: git version
+git version 2.34.1
 #+end_src
-如果想同时查看命令执行的耗时，示例如下：
 
+
+如果想同时查看命令执行的耗时，示例如下：
 #+begin_src shell
 $ GIT_TRACE=1 GIT_TRACE_PERFORMANCE=1 git version
-10:33:20.533261 git.c:455               trace: built-in: git version
-git version 2.34.1.8.g35151cf072
-10:33:20.533908 trace.c:487             performance: 0.000736000 s: git command: git version
+14:35:53.033499 git.c:455               trace: built-in: git version
+git version 2.34.1
+14:35:53.034391 trace.c:487             performance: 0.000945000 s: git command: git version
 #+end_src
+
 
 ** trace 的诊断开关
-如下表所示，Git 支持一系列名为 GIT_TRACE* 的环境变量打开相应的诊断输出。这些环境变量通过以下的取值来控制诊断的开关，以及以及诊断日志输出的位置，如标准错误或日志文件等：
-*** 0 或 false：关闭诊断开关。
-*** 1 或 true：诊断信息输出到标准错误。
-*** 数字：一位的数字被视为文件描述符，诊断信息输出到该文件描述符。
-***  绝对路径：以文件追加的方式打开指定文件，作为诊断信息的输出。
-#+begin_src shell
-环境变量  说明
-GIT_TRACE	用于诊断 git 子命令的调用，显示调用的子命令格式。
-GIT_TRACE_PACKET 	由 pkt-line.c 中的方法调用，显示 pkt-line 数据包发送和接收的诊断信息。
-GIT_TRACE_PACKFILE	输出整个 PACK 包的二进制内容。
-GIT_TRACE_PERFORMANCE	用于 Git 性能的诊断，显示子命令及命令关键步骤执行的耗时。
-GIT_TRACE_SETUP	在命令调用时显示仓库路径、工作区路径、当前路径等。
-GIT_TRACE_CURL	由 http.c 中的方法调用，显示 HTTP 相关的诊断信息。
-GIT_TRACE_WORKING_TREE_ENCODING	当工作区对象通过过滤器重写时显示诊断信息。
-GIT_TRACE_FSMONITOR	由 fsmonitor.c 中的方法调用，对 fsmonitor 相关操作进行诊断。
-GIT_TRACE_PACK_ACCESS	由 packfile.c 中的 unpack_entry 方法调用，对Pack 包文件访问进行诊断。
-GIT_TRACE_REFS	在 refs/debug.c 中定义了一个新的 backend refs_be_debug 对引用相关操作进行诊断。
-GIT_TRACE_SHALLOW	由 shallow.c 中的方法调用，对浅克隆相关操作进行诊断。
-GIT_TRACE_BARE	为了避免诊断输出中的时间信息导致测试用例结果不稳定，可以设置 GIT_TRACE_BARE=1不显示时间和代码行号等信息。
-#+end_src
+Git 支持一系列名为 `GIT_TRACE*` 的环境变量打开相应的诊断输出。这些环境变量通过以下的取值来控制诊断的开关，以及以及诊断日志输出的位置，如标准错误或日志文件等：
 
-** trace 的实现
-trace 实现了一系列类似 printf 的方法来显示诊断信息，而这类诊断输出函数需要提供一个 trace_key 类型的变量作为参数。
+- 0 或 false：关闭诊断开关。
+- 1 或 true：诊断信息输出到标准错误。
+- 数字：一位的数字被视为文件描述符，诊断信息输出到该文件描述符。
+- 绝对路径：以文件追加的方式打开指定文件，作为诊断信息的输出。
 
-*** 结构体 trace_key
-Git 使用结构体 trace_key 来保存诊断开关的名称，和记录诊断开关和状态。这个结构体在 trace.h 文件中定义。如下：
-#+begin_src shell
+​
 
+如下表格是 trace 相关的全部的环境变量：
+
+| **环境变量**                    | **说明**                                                                                                      |
+| ---                             | ---                                                                                                           |
+| GIT_TRACE                       | 用于诊断 git 子命令的调用，显示调用的命令行参数。                                                             |
+| GIT_TRACE_PACKET                | 由 `pkt-line.c` 中的方法调用，显示 pkt-line 数据包发送和接收的诊断信息。                                      |
+| GIT_TRACE_PACKFILE              | 输出整个 PACK 包的二进制内容。                                                                                |
+| GIT_TRACE_PERFORMANCE           | 用于 Git 性能的诊断，显示子命令及命令关键步骤执行的耗时。                                                     |
+| GIT_TRACE_SETUP                 | 在命令调用时显示仓库路径、工作区路径、当前路径等。                                                            |
+| GIT_TRACE_CURL                  | 由 `http.c` 中的方法调用，显示 HTTP 相关的诊断信息。                                                          |
+| GIT_TRACE_WORKING_TREE_ENCODING | 当工作区对象通过过滤器重写时显示诊断信息。                                                                    |
+| GIT_TRACE_FSMONITOR             | 由 `fsmonitor.c` 中的方法调用，对 fsmonitor 相关操作进行诊断。                                                |
+| GIT_TRACE_PACK_ACCESS           | 由 `packfile.c` 中的 `unpack_entry` 方法调用，对Pack 包文件访问进行诊断。                                     |
+| GIT_TRACE_REFS                  | 在 `refs/debug.c` 中定义了一个新的 backend `refs_be_debug`，对引用相关操作进行诊断。                          |
+| GIT_TRACE_SHALLOW               | 由 `shallow.c` 中的方法调用，对浅克隆相关操作进行诊断。                                                       |
+| GIT_TRACE_BARE                  | 为了避免诊断输出中的时间信息导致测试用例结果不稳定，可以设置 `GIT_TRACE_BARE=1`，不显示时间和代码行号等信息。 |
+
+
+
+**  trace 的实现
+trace 实现了一系列类似 `printf` 的方法来显示诊断信息，而这类诊断输出函数需要提供一个 `trace_key` 类型的变量作为参数。
+### 结构体 trace_key
+Git 使用结构体 `trace_key` 来保存诊断开关的名称，和记录诊断开关状态。这个结构体在 `trace.h` 文件中定义。如下：
+
+#+begin_src c
 struct trace_key {
 	const char * const key;
 	int fd;
@@ -55,182 +66,176 @@ struct trace_key {
 #+end_src
 
 其中：
-● key 字段是一个字符串常量，记录开关名称，如果和相应的字符串 GIT_TRACE* 匹配，则打开对应诊断开关。
-● fd 字段记录文件描述符。如果 fd 为 0，则表示该诊断开关处于关闭状态。
-● initialized 是一个布尔值，以确定相应的 trace_key 是否完成初始化。
-● 如果诊断输出到一个文件，则 need_close 字段为 1（true）。
 
-在 trace.h 中定义了宏 TRACE_KEY_INIT(name) ，用于完成相应 trace_key 变量的初始化（填充 key 字段）。
+- key 字段是一个字符串常量，记录开关名称，如果和相应的字符串 `GIT_TRACE*` 匹配，则检查相应的环境变量，打开或关闭对应的诊断开关。
+- fd 字段记录文件描述符。如果 fd 为 0，则表示该诊断开关处于关闭状态。
+- initialized 是一个布尔值，用于确定相应的 trace_key 是否完成初始化。
+- 如果诊断输出到一个文件，则 need_close 字段为 1（true）。
+
+​
+
+在 `trace.h` 中定义了宏 `TRACE_KEY_INIT(name)` ，用于完成相应 `trace_key` 变量的初始化（填充 key 字段）。
+```
 #+begin_src c
-  #define TRACE_KEY_INIT(name) { .key = "GIT_TRACE_" #name }
+#define TRACE_KEY_INIT(name) { .key = "GIT_TRACE_" #name }
 #+end_src
-
-例如在 trace.c 中采用如下方式声明全局变量 trace_perf_key 和 trace_setup_key：
-
-#+begin_src shell
+```
+例如在 `trace.c` 中采用如下方式声明全局变量 `trace_perf_key` 和 `trace_setup_key`：
+```
 struct trace_key trace_perf_key = TRACE_KEY_INIT(PERFORMANCE);
 struct trace_key trace_setup_key = TRACE_KEY_INIT(SETUP);
-#+end_src
-
-宏定义 TRACE_KEY_INIT 的参数并非字符串，但是通过宏定义的特定语法 #name  将其作为字符串和前缀 "GIT_TRACE_" 拼接后填充到结构体 trace_key 的 key 字段中。声明的两个变量被调用时用来检查环境变量 GIT_TRACE_PERFORMANCE 和 GIT_TRACE_SETUP，开启或关闭相应的诊断开关。
-
-** 宏定义和诊断函数
+```
+宏定义 `TRACE_KEY_INIT` 的参数并非字符串，但是通过宏定义的特定语法 `#name`  将其作为字符串和前缀 `"GIT_TRACE_"` 拼接后填充到结构体 `trace_key` 的 `key` 字段中。声明的两个变量被调用时用来检查环境变量 `GIT_TRACE_PERFORMANCE` 和 `GIT_TRACE_SETUP`，开启或关闭相应的诊断开关。
+### 宏定义和诊断函数
 Git 使用 C99 的可变参数宏（Variadic Macros）的功能，定义了 trace 诊断相关的入口函数。例如：
-#+begin_src c
+```
 #define trace_printf_key(key, ...)					    \
 	do {								    \
 		if (trace_pass_fl(key))					    \
 			trace_printf_key_fl(TRACE_CONTEXT, __LINE__, key,   \
 					    __VA_ARGS__);		    \
 	} while (0)
-#+end_src
+```
+上面的宏定义，在预编译阶段对代码进行替换，将真正的函数调用 `trace_printf_key_fl()` 放在条件判断语句之内。即在诊断开关没有打开（`trace_pass_fl(key)` 为 false） 时，不执行相关函数调用，避免由于参数中可能出现的计算带来的性能损失。而整个宏用 `do ... while` 语句括起来，可以避免在 `if ... else ...` 语句中进行宏定义展开时造成 if 语句嵌套的逻辑错误。
+​
 
-上面的宏定义，在预编译阶段对代码进行替换，将真正的函数调用 trace_printf_key_fl() 放在条件判断语句之内。即在诊断开关没有打开（trace_pass_fl(key) 为 false） 时，不执行相关函数调用，避免由于参数中可能出现的计算带来的性能损失。而整个宏用 do ... while 语句括起来，可以避免在 if ... else ... 语句中进行宏定义展开时造成 if 语句嵌套的逻辑错误。
+下面的示例代码来自于 `shallow.c`，定义了一个新的诊断开关，并使用这个诊断开关发送诊断信息。
 
-下面的示例代码来自于 shallow.c，定义了一个新的诊断开关，并使用这个诊断开关发送诊断信息。
+#+begin_src c
 struct trace_key trace_shallow = TRACE_KEY_INIT(SHALLOW);
 
-#+begin_center c
+void prepare_shallow_info(struct shallow_info *info, struct oid_array *sa)
 {
 	... ...
 	trace_printf_key(&trace_shallow, "shallow: prepare_shallow_info\n");
 	... ...
 }
-其中：
-#+end_center
-void prepare_shallow_info(struct shallow_info *info, struct oid_array *sa)
-
-● 先声明结构体 trace_key 的实例 trace_shallow。
-● 然后调用 trace_printf_key 方法显示诊断信息。
-
-** 输出性能诊断信息
-打开性能诊断开关（GIT_TRACE_PERFORMANCE）的命令示例如下：
-#+begin_src shell
-
-
-$ GIT_TRACE_PERFORMANCE=1 git version
-git version 2.34.1.8.g35151cf072
-19:26:39.594832 trace.c:487             performance: 0.000104000 s: git command: git version
-
 #+end_src
 
-为了实现 Git 命令在执行完毕后打印命令执行耗时，首先要记录命令的启动时间。这通过在 git.c 的 cmd_main() 入口函数中执行了如下调用：
+其中：
+
+- 先声明结构体 `trace_key` 的实例变量 `trace_shallow`。
+- 然后调用 `trace_printf_key` 方法显示诊断信息。
+
+​
+
+### 输出性能诊断信息
+打开性能诊断开关（`GIT_TRACE_PERFORMANCE`）的命令示例如下：
+
 #+begin_src shell
+$ GIT_TRACE_PERFORMANCE=1 git version
+git version 2.34.1
+14:47:12.697216 trace.c:487             performance: 0.000116000 s: git command: git version
+#+end_src
+
+为了实现 Git 命令在执行完毕后打印命令执行耗时，首先要记录命令的启动时间。这是通过在 `git.c` 的 `cmd_main()` 入口函数中执行了如下函数调用实现的：
+
+#+begin_src python
 trace_performance_enter();
 #+end_src
 
-该调用会将当前时间戳压栈到数组 perf_start_times[10] 中，计时开始。
-然后需要调用 atexit() 注册退出处理函数，如下：
-
-#+begin_src shell
-
+该函数调用会将当前的时间戳压栈到数组 `perf_start_times[10]` 中，计时开始。
+然后需要调用 `atexit()` 注册退出处理函数，如下：
+#+begin_src c
 atexit(print_command_performance_atexit);
-
 #+end_src
 
-这样当命令执行完毕，调用 print_command_performance_atexit 函数。其中执行了下面的语句，计算和显示命令的耗时：
+这样当命令执行完毕，调用 `print_command_performance_atexit` 函数。其中执行了下面的语句，计算和显示命令的耗时：
+
+#+begin_src c
 trace_performance_leave("git command:%s", command_line.buf);
+#+end_src
+
 如果需要诊断命令执行中某个步骤的耗时，使用如下方法调用。
 
-#+begin_src shell
+```
 trace_performance_enter();
 /* 耗时操作 */
 trace_performance_leave("<message>");
-#+end_src
+```
 
-* trace2
-2019年由 Jeff Hostetler 在 Git v2.22.0 中引入了 trace2。trace2 已经取代了 trace 中的 GIT_TRACE=1 和 GIT_TRACE_PERFORMANCE=1  显示命令调用和性能诊断信息。
 
-因为 trace 和 trace2 用到的环境变量各不相同，因此可以共存。目前依然需要使用 trace 的环境变量 GIT_TRACE_PACKET、GIT_TRACE_CURL  等诊断 PKT-LINE 和 HTTP 数据包。
-** 与 trace 的不同点
-和 trace 相比，trace2 的输出同时包含了命令诊断信息和性能的诊断信息。类似于 trace 同时开启了 GIT_TRACE 和 GIT_TRACE_PERFORMANCE。示例如下：
-#+begin_src shell
-
+2019年由 Jeff Hostetler 在 Git v2.22.0 中引入了 trace2。trace2 天然包含对命令耗时的诊断，因此可以取代 trace 中的 `GIT_TRACE=1` 和 `GIT_TRACE_PERFORMANCE=1` 开关来显示命令行参数和性能诊断信息。
+trace 和 trace2 用到的环境变量各不相同，可以共存。目前对于 PKT-LINE 和 HTTP 数据包的诊断只使用了 trace，即只能使用 trace 的环境变量 `GIT_TRACE_PACKET`、`GIT_TRACE_CURL` 进行诊断，因此 trace2 并不能完全取代 trace。但是 trace2 在 Git 代码中插入了更多针对性能的诊断信息，因此对于性能的诊断需要使用 trace2。
+## 与 trace 的不同点
+和 trace 相比，trace2 的输出同时包含了命令诊断信息和性能的诊断信息。类似于 trace 同时开启了 `GIT_TRACE` 和 `GIT_TRACE_PERFORMANCE`。示例如下：
+```
 $ GIT_TRACE2=1 git version
-21:07:35.065283 common-main.c:48                  version 2.34.1.8.g35151cf072
-21:07:35.066012 common-main.c:49                  start git version
-21:07:35.066938 git.c:456                         cmd_name version (version)
-git version 2.34.1.8.g35151cf072
-21:07:35.067297 git.c:713                         exit elapsed:0.014230 code:0
-21:07:35.067319 trace2/tr2_tgt_normal.c:123       atexit elapsed:0.014255 code:0
-
-#+end_src
-
-相比 trace 只有简单的类似 printf 的输出，trace2 还支持多种不同的输出格式，以适配不同的日志分析程序。除了上面的普通日志格式外，还支持如下的事件日志格式，以 JSON 格式显示结构化信息：
-
-#+begin_src shell
+14:52:41.098227 common-main.c:48                  version 2.34.1
+14:52:41.098900 common-main.c:49                  start git version
+14:52:41.098990 git.c:456                         cmd_name version (version)
+git version 2.34.1
+14:52:41.099066 git.c:713                         exit elapsed:0.002568 code:0
+14:52:41.099086 trace2/tr2_tgt_normal.c:123       atexit elapsed:0.002591 code:0
+```
+相比 trace 只有简单的类似 `printf` 的输出，trace2 还支持多种不同的输出格式，以适配不同的日志分析程序。除了上面的普通日志格式外，还支持如下的事件日志格式，以 JSON 格式显示结构化信息：
+```
 $ GIT_TRACE2_EVENT=1 git version
-{"event":"version","sid":"20211213T131806.470137Z-H6bdc2f2e-P0000be7d","thread":"main","time":"2021-12-13T13:18:06.475449Z","file":"common-main.c","line":48,"evt":"3","exe":"2.34.1.8.g35151cf072"}
-{"event":"start","sid":"20211213T131806.470137Z-H6bdc2f2e-P0000be7d","thread":"main","time":"2021-12-13T13:18:06.475508Z","file":"common-main.c","line":49,"t_abs":0.012036,"argv":["git","version"]}
-{"event":"cmd_name","sid":"20211213T131806.470137Z-H6bdc2f2e-P0000be7d","thread":"main","time":"2021-12-13T13:18:06.476308Z","file":"git.c","line":456,"name":"version","hierarchy":"version"}
-git version 2.34.1.8.g35151cf072
-{"event":"exit","sid":"20211213T131806.470137Z-H6bdc2f2e-P0000be7d","thread":"main","time":"2021-12-13T13:18:06.476730Z","file":"git.c","line":713,"t_abs":0.013260,"code":0}
-{"event":"atexit","sid":"20211213T131806.470137Z-H6bdc2f2e-P0000be7d","thread":"main","time":"2021-12-13T13:18:06.476754Z","file":"trace2/tr2_tgt_event.c","line":201,"t_abs":0.013285,"code":0}
-#+end_src
-
+{"event":"version","sid":"20211216T065305.826979Z-H6bdc2f2e-P00013871","thread":"main","time":"2021-12-16T06:53:05.827986Z","file":"common-main.c","line":48,"evt":"3","exe":"2.34.1"}
+{"event":"start","sid":"20211216T065305.826979Z-H6bdc2f2e-P00013871","thread":"main","time":"2021-12-16T06:53:05.828031Z","file":"common-main.c","line":49,"t_abs":0.001531,"argv":["git","version"]}
+{"event":"cmd_name","sid":"20211216T065305.826979Z-H6bdc2f2e-P00013871","thread":"main","time":"2021-12-16T06:53:05.828122Z","file":"git.c","line":456,"name":"version","hierarchy":"version"}
+git version 2.34.1
+{"event":"exit","sid":"20211216T065305.826979Z-H6bdc2f2e-P00013871","thread":"main","time":"2021-12-16T06:53:05.828227Z","file":"git.c","line":713,"t_abs":0.001715,"code":0}
+{"event":"atexit","sid":"20211216T065305.826979Z-H6bdc2f2e-P00013871","thread":"main","time":"2021-12-16T06:53:05.828293Z","file":"trace2/tr2_tgt_event.c","line":201,"t_abs":0.001787,"code":0}
+```
 第三种输出格式是使用竖线对齐的表格形式，称为性能格式的输出：
-
-#+begin_src shell
-
-
+```
 $ GIT_TRACE2_PERF=1 git version
-21:26:20.135109 common-main.c:48             | d0 | main                     | version      |     |           |           |              | 2.34.1.8.g35151cf072
-21:26:20.135409 common-main.c:49             | d0 | main                     | start        |     |  0.001737 |           |              | git version
-21:26:20.135502 git.c:456                    | d0 | main                     | cmd_name     |     |           |           |              | version (version)
-git version 2.34.1.8.g35151cf072
-21:26:20.135562 git.c:713                    | d0 | main                     | exit         |     |  0.001892 |           |              | code:0
-21:26:20.135572 trace2/tr2_tgt_perf.c:213    | d0 | main                     | atexit       |     |  0.001903 |           |              | code:0
+14:53:34.448117 common-main.c:48             | d0 | main                     | version      |     |           |           |              | 2.34.1
+14:53:34.448835 common-main.c:49             | d0 | main                     | start        |     |  0.002261 |           |              | git version
+14:53:34.448921 git.c:456                    | d0 | main                     | cmd_name     |     |           |           |              | version (version)
+git version 2.34.1
+14:53:34.449000 git.c:713                    | d0 | main                     | exit         |     |  0.002426 |           |              | code:0
+14:53:34.449084 trace2/tr2_tgt_perf.c:213    | d0 | main                     | atexit       |     |  0.002512 |           |              | code:0
+```
+可以同时启用多种不同的输出格式，分别输出到不同的文件中。
+​
 
-#+end_src
-以上三种输出格式可以同时设置多个，分别输出到不同的文件中。
+## trace2 的诊断开关
+Git 的 trace2 诊断开关可以通过 Git 配置变量 `trace2.*`，或者环境变量 `GIT_TRACE2*` 开启。从安全性考虑，Git 配置变量只允许系统级和全局的设置，不允许仓库级设置。环境变量的优先级更高。下面的表格是 trace2 的可用设置列表，每一个设置都包含一个 Git 配置变量和一个环境变量。
+我们在介绍 trace 的时候提到相关环境变量 `GIT_TRACE` 和 `GIT_TRACE_*` 都有着类似的取值，既可以当做开关项，也可以指定日志文件名，而 trace2 却不然。从下面的表格中我们可以看到很多设置是对 trace2 输出内容或者输出格式的定制。
 
-** trace2 的诊断开关
-Git 的 trace2 诊断开关可以通过 Git 配置变量 trace2.*，或者环境变量 GIT_TRACE2* 开启。从安全性考虑，Git 配置变量只允许系统级和全局的设置，不允许仓库级设置。环境变量的优先级更高。
-Git 配置变量	环境变量	说明
-*** trace2.configParams GIT_TRACE2_CONFIG_PARAMS
-该参数设置为需要诊断的 Git 配置变量，多个配置变量名使用逗号分隔。在诊断输出中将显示这些 Git 配置变量的设置，输出格式示例：
+| **Git 配置变量**        | **环境变量**             | **说明**                                                                                                                                             |
+| ---                     | ---                      | ---                                                                                                                                                  |
+| trace2.configParams     | GIT_TRACE2_CONFIG_PARAMS | 该参数设置为需要诊断的 Git 配置变量，多个配置变量名使用逗号分隔。在诊断输出中将显示这些 Git 配置变量的设置，输出格式示例： `def_param <key>=<val>`。 |
+| trace2.envVars          | GIT_TRACE2_ENV_VARS      | 该参数设置为需要诊断的环境变量名，多个环境变量名使用逗号分隔。在诊断输出中显示这些环境变量的设置，输出格式示例： `def_param <key>=<val>`。           |
+| trace2.destinationDebug | GIT_TRACE2_DST_DEBUG     | 针对诊断输出的调试开关，设置为布尔值（0或1）。如果为 1，在目标诊断文件打开失败或写输出失败时，显示警告信息。                                         |
+| trace2.normalTarget     | GIT_TRACE2               | 标准格式的诊断输出开关                                                                                                                               |
+| trace2.normalBrief      | GIT_TRACE2_BRIEF         | 短格式输出，不显示时间和代码行号，便于在测试用例中有稳定的输出。                                                                                     |
+| trace2.eventTarget      | GIT_TRACE2_EVENT         | 事件格式的诊断输出开关                                                                                                                               |
+| trace2.eventBrief       | GIT_TRACE2_EVENT_BRIEF   | 类似于 `GIT_TRACE2_BRIEF`。                                                                                                                          |
+| trace2.eventNesting     | GIT_TRACE2_EVENT_NESTING | 事件嵌套最多的层次，默认2层。                                                                                                                        |
+| trace2.perfTarget       | GIT_TRACE2_PERF          | 性能格式的诊断输出开关                                                                                                                               |
+| trace2.perfBrief        | GIT_TRACE2_PERF_BRIEF    | 类似于 `GIT_TRACE2_BRIEF`。                                                                                                                          |
+| trace2.maxFiles         | GIT_TRACE2_MAX_FILES     | 当诊断输出目标文件是一个目录，会在目录中自动创建日志文件。                                                                                           |
+- 首先检查目录中是否有太多文件（由该变量定义文件数阈值），如果文件数不多（或者未定义该阈值），依次尝试以如下名称 `<sid>.[0-9]` 创建日志。
+- 如果文件数超过阈值，则创建文件 `git-trace2-discard` 作为日志输出。
+- 如果文件数超过阈值，且已存在 `git-trace2-discard`，则不进行诊断输出。
+  ||
 
-def_param <key>=<val>。
-
-*** trace2.envVars	GIT_TRACE2_ENV_VARS
-该参数设置为需要诊断的环境变量名，多个环境变量名使用逗号分隔。在诊断输出中显示这些环境变量的设置，输出格式示例：
-
-def_param <key>=<val>。
-
-*** trace2.destinationDebug	GIT_TRACE2_DST_DEBUG
-
-针对诊断输出的调试开关，设置为布尔值（0或1）。如果为 1，在目标诊断文件打开失败或写输出失败时，显示警告信息。
-
-*** trace2.normalTarget	GIT_TRACE2	标准格式的诊断输出开关
-*** trace2.normalBrief	GIT_TRACE2_BRIEF	短格式输出，不显示时间和代码行号，便于在测试用例中有稳定的输出。
-*** trace2.eventTarget	GIT_TRACE2_EVENT	事件格式的诊断输出开关
-*** trace2.eventBrief	GIT_TRACE2_EVENT_BRIEF	类似于 GIT_TRACE2_BRIEF。
-*** trace2.eventNesting	GIT_TRACE2_EVENT_NESTING	事件嵌套最多的层次，默认2层。
-*** trace2.perfTarget	GIT_TRACE2_PERF	性能格式的诊断输出开关
-*** trace2.perfBrief	GIT_TRACE2_PERF_BRIEF	类似于 GIT_TRACE2_BRIEF。
-*** trace2.maxFiles	GIT_TRACE2_MAX_FILES	当诊断输出目标文件是一个目录，会在目录中自动创建日志文件。
-**** 首先检查目录中是否有太多文件（由该变量定义文件数阈值），如果文件数不多（或者未定义该阈值），依次尝试以如下名称 <sid>.[0-9] 创建日志。
-**** 如果文件数超过阈值，则创建文件 git-trace2-discard 作为日志输出。
-**** 如果文件数超过阈值，且已存在 git-trace2-discard，则不进行诊断输出。
-
-我们在介绍 trace 的时候了解到 trace 的所有环境变量 GIT_TRACE 和 GIT_TRACE_* 都有着类似的取值，既可以当做开关项，也可以指定日志文件名。而上面表格中的 trace2 的设置却不然，很多设置是对 trace2 输出内容或者输出格式的定制。
 trace2 的设置中只有三个设置和 trace 的环境变量类似，用作诊断日志的开关项或者诊断日志输出文件名等。这些变量（以环境变量为例）有：
-● GIT_TRACE2：文本格式的诊断输出开关。
-● GIT_TRACE2_EVENT：JSON 格式的诊断输出开关。
-● GIT_TRACE2_PERF：性能表格形式的诊断输出开关。
+
+- GIT_TRACE2：文本格式的诊断输出开关。
+- GIT_TRACE2_EVENT：JSON 格式的诊断输出开关。
+- GIT_TRACE2_PERF：性能表格形式的诊断输出开关。
+
+​
 
 上述三个变量的取值除了支持 trace 环境变量支持的相关选项之外，还支持 Unix 本地套接字。如下：
-● 0 或 false：关闭诊断开关。
-● 1 或 true：诊断信息输出到标准错误。
-● 数字：一位的数字被视为文件描述符，诊断信息输出到该文件描述符。
-● 绝对路径：以文件追加的方式打开指定文件，作为诊断信息的输出。
-● Unix 本地套接字 ：如果前缀为 af_unix:stream:、 af_unix:dgram:、 af_unix:开头，则使用 Unix 本地套接字的方式建立连接和发送诊断信息。
 
-** trace2 的实现
-trace2 相比 trace 支持了多样化的输出，为了方便日后的扩展，通过接口的方式实现 trace2 的各种日志格式。
-数据结构 tr2_dst 等
-在 trace2 的实现中，也有一个类似于 trace_key 的结构体 tr2_dst。如下：
-#+begin_src c
+- 0 或 false：关闭诊断开关。
+- 1 或 true：诊断信息输出到标准错误。
+- 数字：一位的数字被视为文件描述符，诊断信息输出到该文件描述符。
+- 绝对路径：以文件追加的方式打开指定文件，作为诊断信息的输出。
+- Unix 本地套接字 ：如果前缀为 `af_unix:stream:`、 `af_unix:dgram:`、 `af_unix:`开头，则使用 Unix 本地套接字的方式建立连接和发送诊断信息。
+
+​
+
+## trace2 的实现
+trace2 相比 trace 支持了多样化的输出，为了方便日后的扩展，通过接口的方式实现 trace2 的各种日志格式输出。
+### 数据结构 tr2_dst 等
+在 trace2 的实现中（文件 `trace2/tr2_dst.h`），也有一个类似于 `trace_key` 的结构体 `tr2_dst`。如下：
+```bash
 struct tr2_dst {
 	enum tr2_sysenv_variable sysenv_var;
 	int fd;
@@ -238,11 +243,10 @@ struct tr2_dst {
 	unsigned int need_close : 1;
 	unsigned int too_many_files : 1;
 };
-#+end_src
-
-我们会发现这个结构体和 trace_key 最大的不同在于 trace_key 使用字符串常量保存类似于 GIT_TRACE 这样的键名，而 tr2_dst 使用了一个枚举类型的变量 sysenv_var 来保存键名。这个枚举类型的变量来自于下面的枚举声明：
-
-#+begin_src c
+```
+我们会发现这个结构体和 `trace_key` 最大的不同在于：`trace_key` 使用字符串常量保存类似于 `GIT_TRACE` 这样的键名，而 `tr2_dst` 使用了一个枚举类型的变量 `sysenv_var` 来保存键名。
+这个枚举类型的变量来自于下面的枚举声明（参见 `trace2/tr2_sysenv.h`）：
+```bash
 enum tr2_sysenv_variable { 
 	... ...
 	TR2_SYSENV_NORMAL,
@@ -252,10 +256,10 @@ enum tr2_sysenv_variable {
 	TR2_SYSENV_PERF,
 	... ...
 };
-#+end_src
-正如我们前面说到的 trace2 的设置中，只有三个变量（GIT_TRACE2、GIT_TRACE2_EVENT 和 GIT_TRACE2_PERF）是诊断输出的开关项。因此上面的枚举声明中也只有三个被结构体 tr2_dst 用于初始化三个变量（tr2dst_normal、tr2dst_event 和 tr2dst_perf）。如下所示：
-
-#+begin_center c
+```
+正如我们前面提到的 trace2 的设置中，只有三个变量（`GIT_TRACE2`、`GIT_TRACE2_EVENT` 和 `GIT_TRACE2_PERF`）是诊断输出的开关项。因此上面的枚举声明中也只有三个枚举值（`TR2_SYSENV_NORMAL`、`TR2_SYSENV_EVENT` 和 `TR2_SYSENV_PERF`）被结构体 `tr2_dst` 用于初始化三个变量（`tr2dst_normal`、`tr2dst_event` 和 `tr2dst_perf`）。
+如下的三个 `tr2_dst` 实例变量分别在三个文件中定义：
+```bash
 /* 文件：trace2/tr2_tgt_normal.c */
 static struct tr2_dst tr2dst_normal = { TR2_SYSENV_NORMAL, 0, 0, 0, 0 };
 
@@ -264,16 +268,10 @@ static struct tr2_dst tr2dst_event = { TR2_SYSENV_EVENT, 0, 0, 0, 0 }
 
 /* 文件：trace2/tr2_tgt_perf.c */
 static struct tr2_dst tr2dst_perf = { TR2_SYSENV_PERF, 0, 0, 0, 0 };
-
-#+end_center
-
-
-那么 Git 是怎么通过这些枚举值知道读取哪些 Git 变量和环境变量进行相关的开关项设置呢？
-枚举值和 Git 配置变量、环境变量的关联，是通过 trace2/tr2_sysenv.c 中的结构体变量 tr2_sysenv_settings 声明的。如下所示：
-
-#+begin_src c
-
-
+```
+那么 Git 是怎么通过这些枚举值知道要读取哪些 Git 变量和环境变量进行相关的开关项设置呢？
+这是通过 `trace2/tr2_sysenv.c` 中的结构体变量 `tr2_sysenv_settings` 实现了枚举值和 Git 配置变量、环境变量的关联。如下所示：
+```bash
 static struct tr2_sysenv_entry tr2_sysenv_settings[] = {
 	... ...
 	[TR2_SYSENV_NORMAL]        = { "GIT_TRACE2",
@@ -286,51 +284,31 @@ static struct tr2_sysenv_entry tr2_sysenv_settings[] = {
 	                               "trace2.perftarget" },
 	... ...
 };
+```
 
-#+end_src
 
-接口和实现
-trace2 为了实现可扩展的诊断日志功能，在文件 trace2/tr2_tgt.h 定义了如下的接口：
-#+begin_src shell
+### 接口和实现
+trace2 为了实现可扩展的诊断日志功能，在文件 `trace2/tr2_tgt.h` 中定义了如下的接口：
+```bash
 struct tr2_tgt {
 	struct tr2_dst                          *pdst;
 
-	tr2_tgt_init_t                          *pfn_init;
-	tr2_tgt_term_t                          *pfn_term;
+tr2_tgt_init_t                          *pfn_init;
+tr2_tgt_term_t                          *pfn_term;
 
 	tr2_tgt_evt_version_fl_t                *pfn_version_fl;
 	tr2_tgt_evt_start_fl_t                  *pfn_start_fl;
 	tr2_tgt_evt_exit_fl_t                   *pfn_exit_fl;
 	tr2_tgt_evt_signal_t                    *pfn_signal;
 	tr2_tgt_evt_atexit_t                    *pfn_atexit;
-	tr2_tgt_evt_error_va_fl_t               *pfn_error_va_fl;
-	tr2_tgt_evt_command_path_fl_t           *pfn_command_path_fl;
-	tr2_tgt_evt_command_ancestry_fl_t				*pfn_command_ancestry_fl;
-	tr2_tgt_evt_command_name_fl_t           *pfn_command_name_fl;
-	tr2_tgt_evt_command_mode_fl_t           *pfn_command_mode_fl;
-	tr2_tgt_evt_alias_fl_t                  *pfn_alias_fl;
-	tr2_tgt_evt_child_start_fl_t            *pfn_child_start_fl;
-	tr2_tgt_evt_child_exit_fl_t             *pfn_child_exit_fl;
-	tr2_tgt_evt_child_ready_fl_t            *pfn_child_ready_fl;
-	tr2_tgt_evt_thread_start_fl_t           *pfn_thread_start_fl;
-	tr2_tgt_evt_thread_exit_fl_t            *pfn_thread_exit_fl;
-	tr2_tgt_evt_exec_fl_t                   *pfn_exec_fl;
-	tr2_tgt_evt_exec_result_fl_t            *pfn_exec_result_fl;
-	tr2_tgt_evt_param_fl_t                  *pfn_param_fl;
-	tr2_tgt_evt_repo_fl_t                   *pfn_repo_fl;
-	tr2_tgt_evt_region_enter_printf_va_fl_t *pfn_region_enter_printf_va_fl;
-	tr2_tgt_evt_region_leave_printf_va_fl_t *pfn_region_leave_printf_va_fl;
-	tr2_tgt_evt_data_fl_t                   *pfn_data_fl;
-	tr2_tgt_evt_data_json_fl_t              *pfn_data_json_fl;
-	tr2_tgt_evt_printf_va_fl_t              *pfn_printf_va_fl;
+  /* 此处略去 20 行 */
 };
-#+end_src
-结构体 tr2_tgt 声明了日志目标接口（或者称为 vtable）。该接口除了第一个字段是指向 tr2_dst 数据的指针之外，其余都是函数指针。和我们在 transport-internal.h 文件中看到的接口声明中的函数指针不同，为了实现对齐，使用 typedef 为函数指针重新命名。在文件 trace2/tr2_tgt.h 中的这些 typedef 声明如下所示：
-#+begin_src shell
-
+```
+结构体 `tr2_tgt` 声明了日志接口（或者称为 vtable）。该接口除了第一个字段是指向 `tr2_dst` 数据的指针之外，其余都是函数指针。与我们在 `transport-internal.h` 文件中看到的直接使用函数声明来定义接口的写法不同，为了实现更漂亮的代码对齐，在文件 `trace2/tr2_tgt.h` 中，使用 `typedef` 语句先对函数指针进行了类型定义，如下所示：
+```bash
 /*
- * Function prototypes for a TRACE2 "target" vtable.
- */
+- Function prototypes for a TRACE2 "target" vtable.
+*/
 
 typedef int(tr2_tgt_init_t)(void);
 typedef void(tr2_tgt_term_t)(void);
@@ -342,21 +320,28 @@ typedef void(tr2_tgt_evt_start_fl_t)(const char *file, int line,
 				     const char **argv);
 
 /* 以下省略若干行 */
-常规格式日志的处理方法封装在文件 trace2/tr2_tgt_normal.c 中。其中包含 tr2_tgt 的一个接口实现 tr2_tgt_normal，如下：
+```
+trace2 在三个文件中实现了接口 `tr2_tgt`。
+常规格式日志通过在文件 `trace2/tr2_tgt_normal.c` 中定义 `tr2_tgt` 的接口实现 `tr2_tgt_normal` 如下。其中和性能诊断输出的相关函数指针 `tr2_tgt_evt_region_enter_printf_va_fl_t` 和 `tr2_tgt_evt_region_leave_printf_va_fl_t` 为空。这也是为什么对于很多 git 命令打开 `GIT_TRACE2`  调试开关的诊断输出要比打开 `GIT_TRACE2_EVENT` 或 `GIT_TRACE2_PERF` 少很多。
+```bash
 struct tr2_tgt tr2_tgt_normal = {
 	&tr2dst_normal,
 
 	fn_init,
 	fn_term,
-  ... ...
+	... ...
+	NULL, /* thread_start */
+	NULL, /* thread_exit */
+	... ...	
+	NULL, /* region_enter */
+	NULL, /* region_leave */
+	NULL, /* data */
+	NULL, /* data_json */
+	fn_printf_va_fl,
 };
-
-#+end_src
-在 trace2/tr2_tgt_event.c 中包含针对事件格式日志的接口实现 tr2_tgt_event，如下所示：
-
-#+begin_src shell
-
-
+```
+事件格式日志通过在文件 `trace2/tr2_tgt_event.c` 中定义 `tr2_tgt` 的接口实现 `tr2_tgt_event`，如下：
+```bash
 /* 文件：trace2/tr2_tgt_event.c */
 
 struct tr2_tgt tr2_tgt_event = {
@@ -366,7 +351,9 @@ struct tr2_tgt tr2_tgt_event = {
 	fn_term,
   ... ...
 };
-同样，在 trace2/tr2_tgt_perf.c 中包含针对性能格式日志的接口实现 tr2_tgt_perf，如下所示：
+```
+同样，性能格式日志通过在文件 `trace2/tr2_tgt_perf.c` 中定义 `tr2_tgt` 的接口实现 `tr2_tgt_perf`，如下：
+```bash
 struct tr2_tgt tr2_tgt_perf = {
 	&tr2dst_perf,
 
@@ -374,10 +361,56 @@ struct tr2_tgt tr2_tgt_perf = {
 	fn_term,
 	... ...
 };
-#+end_src
-trace2_initialize() 方法 
+```
+​
 
+### 定义退出处理函数，显示命令耗时
+启用 trace2 的任意一种日志诊断输出，会显示命令耗时。例如：
+```
+$ GIT_TRACE2_BRIEF=1 GIT_TRACE2=1 git version                                              
+version 2.34.1
+start git version
+cmd_name version (version)
+git version 2.34.1
+exit elapsed:0.003478 code:0
+atexit elapsed:0.003487 code:0
+```
+与 trace 类似，trace2 也在 Git 的程序入口处定义了退出处理函数，以便在程序结束时显示命令耗时等诊断信息。在文件 `common-main.c` 中通过如下语句完成 trace2 的初始化。
+```
+trace2_initialize();
+```
+初始化过程包括：
 
-trace2_region_enter("fetch", "fetch_refs", the_repository);
-trace2_region_leave("fetch", "consume_refs", the_repository);
-  
+- 通过调用 `tr2_sysenv_load()` 和每个内置日志实例的 `pfn_init()` 函数指针指向的方法，读取相关的 Git 配置变量和环境变量。
+- 如果启用了任一一种日志输出，添加退出处理函数 `tr2main_atexit_handler()`，而该方法会调用相关日志实例的 `pfn_atexit()` 函数指针指向的方法。
+- 日志实例的 `pfn_atexit()` 方法会显示命令的耗时等信息。
+
+​
+
+### 输出性能诊断信息
+如果使用环境变量 `GIT_TRACE2_EVENT` 或者 `GIT_TRACE2_PERF` 开启诊断日志，还会输出更详细的性能诊断信息，这是因为这两种日志格式实现了性能诊断输出的相关函数。
+以文件 `builtin/fetch.c` 为例，为了诊断获取远程引用列表耗费的时间，在相关语句的前后调用了 `trace2_region_enter()` 和 `trace2_region_leave()` 函数。如下所示：
+```
+	if (must_list_refs) {
+		trace2_region_enter("fetch", "remote_refs", the_repository);
+		remote_refs = transport_get_remote_refs(transport,
+							&transport_ls_refs_options);
+		trace2_region_leave("fetch", "remote_refs", the_repository);
+	} else
+		remote_refs = NULL;
+```
+那么我们在执行 `git fetch` 操作时打开 `GIT_TRACE2_EVENT` 或者 `GIT_TRACE2_PERF` 开关，就会显示分类为 `fetch`、标签为 `remote_refs` 的性能诊断信息。
+下面的命令将性能诊断日志输出到文件 `/tmp/trace.log` 中：
+```
+$ git init demo
+$ cd demo
+$ git remote add origin git@github.com:githubtraining/hellogitworld.git
+$ GIT_TRACE2_PERF_BRIEF=1 GIT_TRACE2_PERF=/tmp/trace.log git fetch
+```
+抓取标签为 `remote_refs` 的诊断信息，命令及其输出如下：
+```
+$ grep -w remote_refs /tmp/trace.log
+d0 | main                     | region_enter | r1  |  0.007172 |           | fetch        | label:remote_refs
+d0 | main                     | region_leave | r1  |  3.452460 |  3.445288 | fetch        | label:remote_refs
+```
+可以看出要诊断的 `remote_refs` 环节的耗时为 3.44 秒。

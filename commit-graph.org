@@ -1,16 +1,6 @@
 * Links
 *** https://devblogs.microsoft.com/devops/supercharging-the-git-commit-graph/
 *** https://devblogs.microsoft.com/devops/supercharging-the-git-commit-graph-ii-file-format/
-***** Structure of cg file:
-****** Commit IDs: sorted and can be indexed as "Graph Position"
-****** Fanout: 256 entries, The fanout value F[i] stores the number of commits whose first byte (or first two hex digits) of their ID is at most i. Thus, F[0xff] stores the total number of commits. This allows us to seed the initial values of the binary search into the commit IDs.
-****** Commit Data:
-******* Root Tree ID
-******* Commit Date
-******* "Graph Positions" of 2 parents as integers (not commit id, avoiding perform a binary search again)
-****** Octopus Edges:
-******* Second parent value of Commit Data : a position to octopus edges list to store the parents ( null-termination trick to let the list of parents be arbitrarily large)
-
 ***** Performance gains:
 ****** parsing the commit-graph file INSTEAD of raw commits
 ******* D: parsing this tabular data faster than unzipping and parsing the plain-text commit information
@@ -32,17 +22,33 @@
 ****** gen(Root) = 1
 ****** If gen(A) < gen(B) then A cannot reach B.
 ****** use generation to walk in order of descending instead of commit date
-***** "Can X Reach Y ?"
-****** git push --force:
-******* if remote has a commit that local doesn't have on the same branch, push will fail,  then you need pull first or force push.
-******* So the "X" here is the revision on server, "Y" is the revision on the local branch.  "Can X Reach Y ?" will perform a commit walk ordered by commit date starting from "X" and if "Y" appears during this walk , the result is YES, the push is safe because server already have the base X, if not, a force push may remove important history.
-****** git status
-*****  Using generation number for topo order (for accelerate)
-****** topo order: 让所有的边都朝下指向， 更通俗的讲， 普通commit必须在它parent之前出现（https://en.wikipedia.org/wiki/Topological_sorting）， 让你执行 `git log --graph`的时候，实际上git就会帮你完成topological sort。
-****** TODO unfinished read
 
 ***** Performance gains:
-****** force-push: 典型的 X是否可以reach Y的场景，注意 reach的概念指的是沿着DAG的边(edge)的方向(generation->root)是否可达, 如果可达，我们叫做"X can reach Y" 或者 "Y is reachable by X".  回到push， 
+****** force-push:  核心思想 解决"Can X Reach Y ?"的性能问题
+#+begin_src text
+          典型的 X是否可以reach Y的场景，注意 reach的概念指的是沿着DAG的边(edge)的方向(generation->root)是否可达, 如果可达，我们叫做"X can reach Y" 或者 "Y is reachable by X".  回到push， server branch的版本为Y， 本地版本为X,  如果walk时找到Y并且距离X较近，那么性能是可以接受的， 但是如果Y在本地并不存在， 那么X开始将walk整个提交历史尝试寻找Y， so这里主要可以提升本地walk性能的提升？ 如何做呢？思想就是前面提到的：不要访问generations number 低于 Y的这些提交
+#+end_src
+
+****** find merge-base: git merge 以及 git status等场景下， 用generation number替代原有的commit date解决时钟不一致带来的性能问题
+
+#+begin_src text
+  合并等场景， 例如A和B之间可能有多个merge bases，这时候寻找merge bases遵循两点：
+  ,* 某个merge-base必须是 A和B都可达的提交；
+  ,* 某个merge-base对某个commit不可达， 但是A和B都可达这个commit；
+
+  Git是如何做的呢？
+        1. walk A 和 B 提交，顺序为“提交时间”倒序，标记沿途A和B可达或同时可达的提交
+        2.当找到边界提交(boundry commits)时停止, 即，当找到某个commit为A和B同时可达时，  比较该commit的parent为“uninteresting”, 这个不再感兴趣的提交就是边界提交。
+        3. 下一步，我们再次对A和B进行walk， 来找到第一个A和B都标记为“interesting”的commit， 如果找到了， 这就是我们的merge base。
+
+#+end_src
+
+******  topo order sort: git log --graph (命令行性能和Azure展示graph的数据展示和过滤页面的性能优化)
+
+#+begin_src text
+          什么是topological sorting? 就是让所有的边都朝下指向， 更通俗的讲， 普通commit必须在它parent之前出现（https://en.wikipedia.org/wiki/Topological_sorting）， 让你执行 `git log --graph`的时候，实际上git就会帮你完成topological sort。
+#+end_src
+
 *** https://devblogs.microsoft.com/devops/super-charging-the-git-commit-graph-iv-bloom-filters/
 ***** Why? -apply a filter to our results
 ***** Scenes:  `git log master -- The/Path/To/My/File.txt`
@@ -111,6 +117,8 @@
 ******* observed speedups as high as 20x for rarely-changed paths.
 ******* less than 100MB of extra storage for a repository the size of the Linux kernel.
 
+*** https://git-scm.com/docs/git-commit-graph
+**** write:
 *** https://devblogs.microsoft.com/devops/updates-to-the-git-commit-graph-feature/
 ***** rewriting the entire file is slow sometimes, so it also support multi-commit-graph
 ***** we can use `--split` to ceate a incremental commit-graph file
@@ -127,12 +135,169 @@ The
 *** https://github.blog/2020-07-27-highlights-from-git-2-28/#changed-path-bloom-filters
 *** [RFC] https://public-inbox.org/git/fca023a3-f849-4be8-db42-7027bfe7b0dc@gmail.com/
 
+* Statistics
+
+** Git Repository:
+
+master: b50d82b00a8fc9d24e41ae7dc30185555f8fb0a0
+topic:  e144d126d74f5d2702870ca9423743102eec6fcd
+
+#+begin_src shell
+  Command	Before	After	Change
+  git merge-base master topic	0.10	0.04	-60%
+  git branch --contains	0.76	0.03	-96%
+  git tag --contains	0.70	0.03	-96%
+  git tag --merged	0.74	0.12	-84%
+  git log --graph -10	0.44	0.05	-89%
+#+end_src
+
+** Linux Repository:
+
+master: 032b4cc8ff84490c4bc7c4ef8c91e6d83a637538
+topic:  62d18ecfa64137349fac9c5817784fbd48b54f48
+
+#+begin_src shell
+  Command	Before	After	Change
+  git merge-base master topic	0.52	0.06	-88%
+  git branch --contains	76.20	0.04	-99%
+  git tag --contains	5.30	0.03	-99%
+  git tag --merged	6.30	1.50	-76%
+  git log --graph -10	5.90	0.74	-87%
+#+end_src
+
+** Windows Repository (GVFS):
+
+#+begin_src shell
+  Command	Before	After	Change
+  git status --ahead-behind	14.30	4.70	-67%
+  git merge-base A B	11.40	1.80	-84%
+  git branch --contains	9.40	1.60	-83%
+  git log --graph -10	24.30	5.30	-78%
+  #+end_src
+
+* tests
+
+** Linux
+
+*** write commit-graph(不加--changed-path为32s, 加上193s )
+#+begin_src shell
+LANG=en_GB /usr/local/bin/git commit-graph write --reachable  18.07s user 2.05s system 61% cpu 32.757 total
+#+end_src
+
+
+➜  info git:(master) ✗ time git commit-graph write --reachable --changed-paths
+Expanding reachable commits in commit graph: 1059090, done.
+Computing commit changed paths Bloom filters: 100% (1059090/1059090), done.
+Writing out commit graph in 6 passes: 100% (6354540/6354540), done.
+LANG=en_GB /usr/local/bin/git commit-graph write --reachable --changed-paths  171.21s user 4.99s system 90% cpu 3:13.98 total
+
+
+*** 三年前修改的文件 执行 git log (提升30%)
+
+#+begin_src shell
+    ➜  pack git:(master) ✗ time git log  8ab7745879037 -- scripts/gdb/Makefile > /dev/null
+    LANG=en_GB /usr/local/bin/git log 8ab7745879037 -- scripts/gdb/Makefile >   1.28s user 0.29s system 99% cpu 1.583 total
+
+    ➜  pack git:(master) ✗ time git log  8ab7745879037 -- scripts/gdb/Makefile > /dev/null
+  LANG=en_GB /usr/local/bin/git log 8ab7745879037 -- scripts/gdb/Makefile >   0.83s user 0.26s system 99% cpu 1.097 total
+
+➜  info git:(master) ✗ hyperfine "git log  8ab7745879037 -- scripts/gdb/Makefile > /dev/null"
+Benchmark 1: git log  8ab7745879037 -- scripts/gdb/Makefile > /dev/null
+  Time (mean ± σ):     224.5 ms ±   8.0 ms    [User: 179.3 ms, System: 40.6 ms]
+  Range (min … max):   207.1 ms … 234.9 ms    14 runs
+#+end_src
+
+*** 拓扑排序 (提升200倍)
+
+#+begin_src shell
+  ➜  pack git:(master) ✗ time  git log --graph -10 > /dev/null
+  LANG=en_GB /usr/local/bin/git log --graph -10 > /dev/null  10.38s user 0.77s system 99% cpu 11.224 total
+➜  pack git:(master) ✗ time  git log --graph -10 > /dev/null
+LANG=en_GB /usr/local/bin/git log --graph -10 > /dev/null  0.00s user 0.05s system 94% cpu 0.061 total
+#+end_src
+
+*** merge base : rev-list 245407个提交差异, 提升3-4倍;   13137个提交，提升5-6倍
+
+#+begin_src shell
+  ➜  pack git:(master) ✗ hyperfine "git rev-list v5.0...v5.16-rc1 > /dev/null"
+  Benchmark 1: git rev-list v5.0...v5.16-rc1 > /dev/null
+    Time (mean ± σ):      3.782 s ±  0.029 s    [User: 3.331 s, System: 0.443 s]
+    Range (min … max):    3.747 s …  3.840 s    10 runs
+
+  ➜  pack git:(master) ✗ hyperfine "git rev-list v5.0...v5.16-rc1 > /dev/null"
+Benchmark 1: git rev-list v5.0...v5.16-rc1 > /dev/null
+  Time (mean ± σ):     880.8 ms ±  18.6 ms    [User: 627.9 ms, System: 246.7 ms]
+  Range (min … max):   836.9 ms … 903.7 ms    10 runs
+
+        ➜  pack git:(master) ✗ hyperfine "git rev-list v5.15...v5.16-rc1 > /dev/null"
+      Benchmark 1: git rev-list v5.15...v5.16-rc1 > /dev/null
+        Time (mean ± σ):      1.736 s ±  0.014 s    [User: 1.583 s, System: 0.147 s]
+        Range (min … max):    1.722 s …  1.763 s    10 runs
+
+        ➜  pack git:(master) ✗ hyperfine "git rev-list v5.15...v5.16-rc1 > /dev/null"
+
+        Benchmark 1: git rev-list v5.15...v5.16-rc1 > /dev/null
+          Time (mean ± σ):     289.8 ms ±   5.6 ms    [User: 238.5 ms, System: 48.3 ms]
+          Range (min … max):   275.5 ms … 297.5 ms    10 runs
+
+
+#+end_src
+
+* Command Usage
+** write
+**** default：  based on the commits found in packfiles 注意松散的文件是取不到的， 所以如果要定时更新该文件需要
+**** --reachable ：  by walking commits starting at all refs
+**** --changed-paths： 记录commit和first-commit之间修改的paths信息， *应该开启*
+**** --max-new-filters=<n>： 如果` --changed-paths`开启了，  则<n>为bloom filters的最大数量， 如果<n>=-1则无限制。推荐使用`—split=replace`.
+**** --split[=<strategy>]: write the commit-graph as a chain of multiple commit-graph files stored in <dir>/info/commit-graphs.Commit-graph layers are merged based on the strategy and other splitting options. The new commits not already in the commit-graph are added in a new "tip" file. This file is merged with the existing file if the following merge conditions are met:
+***** --split=no-merge : 从来不合并
+***** --split=replace： 覆盖现有的chain， 重新生成一个
+***** --split：取决于下面的选项
+****** --size-multiple=<X> ： default is 2.  M : previous tip file commits number; N: new tip file commits number. if X * N > M, 合并两个文件为1个文件
+****** --max-commits=<M>： if new tip file commits nr > M , 合并两个文件为一个文件
+****** --expire-time=<datetime>： default: `datetime`.After writing the split commit-graph, delete all unused commit-graph whose modified times are older than datetime.
+** verify
 
 * Scences
 *** git status (need to compute merge bases on server)
 *** git log --graph (reports in topological order, algorithm walks every reachable commit before displaying a single commit to the user. Like Azure support a graph view of commits topotical ordered, filters like author/date_interval )
 *** git log master -- The/Path/To/My/File.txt (on the repo main page)
-* Configurations
+* File format
+*** HEADER
+**** 4-byte signature:  The signature is: {'C', 'G', 'P', 'H'}
+**** 1-byte version number:  the only valid version is 1.
+**** 1-byte Hash Version: 1 => SHA-1, 2 => SHA-256
+**** 1-byte number (C) of "chunks"
+**** 1-byte number (B) of base commit-graphs. We infer the length (H*B) of the Base Graphs chunk from this value.
+*** CHUNK LOOKUP
+**** (C + 1) * 12 bytes listing the table of contents for the chunks:
+#+begin_src text
+          First 4 bytes describe the chunk id. Value 0 is a terminating label.
+          Other 8 bytes provide the byte-offset in current file for chunk to
+          start. (Chunks are ordered contiguously in the file, so you can infer
+          the length using the next chunk position if necessary.) Each chunk
+          ID appears at most once.
+#+end_src
+
+*** CHUNK DATA
+**** 256 * 4 bytes: OID Fanout (ID: {'O', 'I', 'D', 'F'})
+**** N * H bytes: OID Lookup (ID: {'O', 'I', 'D', 'L'}) .The OIDs for all commits in the graph, sorted in ascending order.
+**** N * (H + 16) bytes): Commit Data (ID: {'C', 'D', 'A', 'T' })
+***** The first H bytes are for the OID of the root tree.
+***** The next 8 bytes are for the positions of the first two parents of the ith commit. Stores value 0x70000000 if no parent in that position. If there are more than two parents, the second value has its most-significant bit on and the other bits store an array position into the Extra Edge List chunk.
+***** The next 8 bytes store the topological level (generation number v1)  of the commit and the commit time in seconds since EPOCH. The generation number uses the higher 30 bits of the first 4 bytes, while the commit time uses the 32 bits of the second 4 bytes, along with the lowest 2 bits of the lowest byte, storing the 33rd and 34th bit of the commit time.
+***** TODO https://git-scm.com/docs/commit-graph-format
+  
+**** Commit IDs: sorted and can be indexed as "Graph Position"
+****** Fanout: 256 entries, The fanout value F[i] stores the number of commits whose first byte (or first two hex digits) of their ID is at most i. Thus, F[0xff] stores the total number of commits. This allows us to seed the initial values of the binary search into the commit IDs.
+****** Commit Data:
+******* Root Tree ID
+******* Commit Date
+******* "Graph Positions" of 2 parents as integers (not commit id, avoiding perform a binary search again)
+****** Octopus Edges:
+******* Second parent value of Commit Data : a position to octopus edges list to store the parents ( null-termination trick to let the list of parents be arbitrarily large)
+
+
 
 * What I Learn?
 
@@ -147,3 +312,10 @@ The
 *****  《bloom filter》
 ****** https://en.wikipedia.org/wiki/Bloom_filter
 ****** https://www.cnblogs.com/liyulong1982/p/6013002.html
+
+* Test
+
+
+ #+begin_src shell
+grpcurl -plaintext -protoset satellite.protoset  -d '{"repository": {"gl_repository_id": 551613,"relative_path": "dyrone/dyrone/dyrone.git","storage_name": "default"}}'  localhost:58081 "satellite.RepositoryService/WriteCommitGraph"
+ #+end_src
