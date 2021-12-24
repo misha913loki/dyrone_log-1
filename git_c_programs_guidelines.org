@@ -1,0 +1,12 @@
+
+
+* For C programs
+
+
+** size_t
+
+Type size_t is a s typedef that's an alias for some unsigned integer type;
+
+Each Standard C implementation is supposed to choose the unsigned integer that's big enough–but no bigger than needed–to represent the size of the largest possible object on the target platform;
+
+From : https://www.embedded.com/why-size_t-matters/
