@@ -2,6 +2,17 @@
 
 * For C programs
 
+** introduction
+*** 1972 by Dennis Ritchie.
+*** a procedural programming language
+***  start by a "#" will be process by "preprocessor" (https://en.wikipedia.org/wiki/C_preprocessor)
+**** takes a C program and produces another C program
+**** "#include <stdio.h>": the preprocessor copies the preprocessed code of stdio.h to our file. (These header files generally contain declarations of functions. We need stdio.h for the function printf() used in the program. )
+*** Difference between “int main()” and “int main(void)” in C/C++?
+**** https://www.geeksforgeeks.org/difference-int-main-int-mainvoid/
+*** #include <stdio.h> VS #include "stdio.h"
+**** If the filename is enclosed within angle brackets, the file is searched for in the standard compiler include paths.
+****  If the filename is enclosed within double quotes, the search path is expanded to include the current source file directory.
 
 ** size_t
 
