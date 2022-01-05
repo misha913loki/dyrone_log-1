@@ -3,7 +3,7 @@
 *** 学习路线
 ***** [RFC] https://lore.kernel.org/git/20180107181459.222909-1-dstolee@microsoft.com/
 ***** [正式贡献] https://lore.kernel.org/git/20180607140338.32440-1-dstolee@microsoft.com/
-***** [repack和expire等子命令] https://lore.kernel.org/git/pull.92.git.gitgitgadget@gmail.com/
+***** [repack和expire等子命令] https://lore.kernel.org/git/pull.92.git.gitgitgadget@gmail.com/ 
 
 * Backgrounds:[RFC] https://lore.kernel.org/git/20180107181459.222909-1-dstolee@microsoft.com/
 
