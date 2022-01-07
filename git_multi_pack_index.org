@@ -285,6 +285,37 @@ Building bitmaps: 100% (516/516), done.
 LANG=en_GB git multi-pack-index write --bitmap --progress  146.71s user 3.28s system 99% cpu 2:30.71 total
 #+end_src
 
+** 性能测试
+
+**** git仓库 codeup正式， 对比"midx+mbitmap+rev" vs "之前"， 测试结果: 
+#+begin_src shell
+[tenglong.tl@code-infra-dev-cbj.ea134 /home/tenglong.tl/trash]
+$hyperfine --warmup=3 --prepare="rm -rf git" "git clone git@codeup.aliyun.com:5f3e418e6207a1a8b17f9257/git_source.git git --no-checkout" --runs 2
+Benchmark 1: git clone git@codeup.aliyun.com:5f3e418e6207a1a8b17f9257/git_source.git git --no-checkout
+  Time (mean ± σ):     18.608 s ±  0.023 s    [User: 27.833 s, System: 1.546 s]
+  Range (min … max):   18.592 s … 18.624 s    2 runs
+ 
+[tenglong.tl@code-infra-dev-cbj.ea134 /home/tenglong.tl/trash]
+$hyperfine --warmup=3 --prepare="rm -rf git" "git clone git@codeup.aliyun.com:5f3e418e6207a1a8b17f9257/git_source.git git --no-checkout" --runs 2
+Benchmark 1: git clone git@codeup.aliyun.com:5f3e418e6207a1a8b17f9257/git_source.git git --no-checkout
+
+Time (mean ± σ):     13.590 s ±  0.143 s    [User: 28.053 s, System: 1.549 s]
+Range (min … max):   13.489 s … 13.691 s    2 runs
+#+end_src
+
+**** linux仓库测试结果， 对比"midx+mbitmap+rev" vs "之前"， 测试结果: 
+#+begin_src shell
+$hyperfine --prepare="rm -rf linux" "git clone git@git@codeup.aliyun.com:5f3e418e6207a1a8b17f9257/linux.git --no-checkout" --runs 2 --show-output                                                                                                                                  
+Time (mean ± σ):     395.911 s ±  5.681 s    [User: 534.106 s, System: 37.694 s]                                                                            
+Range (min … max):   391.894 s … 399.928 s    2 runs 
+
+$hyperfine --prepare="rm -rf linux" "git clone git@git@codeup.aliyun.com:5f3e418e6207a1a8b17f9257/linux.git --no-checkout" --runs 2 --show-output
+Benchmark 1: git clone git@git@codeup.aliyun.com:5f3e418e6207a1a8b17f9257/linux.git --no-checkout
+
+Time (mean ± σ):     253.628 s ±  1.185 s    [User: 530.329 s, System: 38.369 s]
+Range (min … max):   252.790 s … 254.466 s    2 runs
+#+end_src
+
 
 * Learn
 ** protoset
