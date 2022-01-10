@@ -319,3 +319,143 @@ Benchmark 1: git rev-list v5.0...v5.16-rc1 > /dev/null
  #+begin_src shell
 grpcurl -plaintext -protoset satellite.protoset  -d '{"repository": {"gl_repository_id": 551613,"relative_path": "dyrone/dyrone/dyrone.git","storage_name": "default"}}'  localhost:58081 "satellite.RepositoryService/WriteCommitGraph"
  #+end_src
+
+
+** codeup production test
+
+*** git repository
+
+**** page: https://codeup.aliyun.com/5f3e418e6207a1a8b17f9257/git_source/tree/master/contrib
+**** APi:
+***** Tree first time (root dir) : https://codeup.aliyun.com/api/v4/projects/1680320/repository/tree?_input_charset=utf-8&type=FLATTEN&path=&ref_name=refs/heads/master
+
+    412 ms ~794
+***** Tree second time (sub dir):
+
+    417~563
+    
+***** Last commit
+
+    259~426
+***** batch
+
+    640~750
+
+*** hyperfine:
+
+**** 根提交
+#+begin_src shell
+$hyperfine --warmup=10 "/opt/git/master/bin/git log --max-count=1 --pretty=format:'%H% %s %B %an %ae %aI %cn %ce %cI %P' -z --"
+Benchmark 1: /opt/git/master/bin/git log --max-count=1 --pretty=format:'%H% %s %B %an %ae %aI %cn %ce %cI %P' -z --
+  Time (mean ± σ):       1.1 ms ±   0.1 ms    [User: 0.5 ms, System: 0.8 ms]
+  Range (min … max):     1.0 ms …   1.6 ms    1580 runs
+
+#+end_src
+
+**** contrib目录, 修改时间： 2021.12.21
+
+#+begin_src shell
+$hyperfine --warmup=10 "/opt/git/master/bin/git log --max-count=1 --pretty=format:'%H% %s %B %an %ae %aI %cn %ce %cI %P' -z -- contrib"
+Benchmark 1: /opt/git/master/bin/git log --max-count=1 --pretty=format:'%H% %s %B %an %ae %aI %cn %ce %cI %P' -z -- contrib
+  Time (mean ± σ):       2.0 ms ±   0.1 ms    [User: 1.1 ms, System: 0.9 ms]
+  Range (min … max):     1.8 ms …   2.6 ms    997 runs
+#+end_src
+
+**** contrib/contacts目录， 2017年07月28日
+
+#+begin_src shell
+$hyperfine --warmup=10 "/opt/git/master/bin/git log --max-count=1 --pretty=format:'%H% %s %B %an %ae %aI %cn %ce %cI %P' -z -- contrib/contacts"
+Benchmark 1: /opt/git/master/bin/git log --max-count=1 --pretty=format:'%H% %s %B %an %ae %aI %cn %ce %cI %P' -z -- contrib/contacts
+  Time (mean ± σ):     173.8 ms ±   3.8 ms    [User: 151.6 ms, System: 22.1 ms]
+  Range (min … max):   168.6 ms … 178.9 ms    16 runs
+#+end_src
+
+#+begin_src shell
+$hyperfine --warmup=10 "/opt/git/master/bin/git log --max-count=1 --pretty=format:'%H% %s %B %an %ae %aI %cn %ce %cI %P' -z -- contrib/contacts"
+Benchmark 1: /opt/git/master/bin/git log --max-count=1 --pretty=format:'%H% %s %B %an %ae %aI %cn %ce %cI %P' -z -- contrib/contacts
+  Time (mean ± σ):      15.0 ms ±   0.8 ms    [User: 10.9 ms, System: 4.1 ms]
+  Range (min … max):    13.8 ms …  18.2 ms    196 runs
+#+end_src
+
+#+begin_src shell
+$time git log --max-count=1 --pretty=format:'%H% %s %B %an %ae %aI %cn %ce %cI %P' -z -- contrib/contacts
+..
+real    0m0.185s
+user    0m0.145s
+sys     0m0.041s
+#+end_src
+
+#+begin_src shell
+$time git log --max-count=1 --pretty=format:'%H% %s %B %an %ae %aI %cn %ce %cI %P' -z -- contrib/contacts
+09ac6737887e26dd2b1f078946400c012955f081git-contacts: also recognise "Reported-by:" git-contacts: also recognise "Reported-by:"
+
+It's nice to cc someone that reported a bug, in order to let them
+know that a fix is being considered, and possibly even get their
+help in reviewing/testing the patch.
+
+Signed-off-by: Eric Blake <eblake@redhat.com>
+Signed-off-by: Junio C Hamano <gitster@pobox.com>
+ Eric Blake eblake@redhat.com 2017-07-21T09:15:30-05:00 Junio C Hamano gitster@pobox.com 2017-07-27T09:42:55-07:00 5800c63717ae35286a1441f14ffff753e01f7e2b
+
+real    0m0.025s
+user    0m0.019s
+sys     0m0.007s
+#+end_src
+
+**** contrib/git-shell-commands目录, 修改时间： 2010.7.28
+
+#+begin_src shell
+$hyperfine --warmup=10 "/opt/git/master/bin/git log --max-count=1 --pretty=format:'%H% %s %B %an %ae %aI %cn %ce %cI %P' -z -- contrib/git-shell-commands"
+Benchmark 1: /opt/git/master/bin/git log --max-count=1 --pretty=format:'%H% %s %B %an %ae %aI %cn %ce %cI %P' -z -- contrib/git-shell-commands
+  Time (mean ± σ):     383.7 ms ±   6.1 ms    [User: 338.8 ms, System: 44.8 ms]
+  Range (min … max):   378.3 ms … 393.1 ms    10 runs
+#+end_src 
+
+#+begin_src shell
+$hyperfine --warmup=10 "/opt/git/master/bin/git log --max-count=1 --pretty=format:'%H% %s %B %an %ae %aI %cn %ce %cI %P' -z -- contrib/git-shell-commands"
+Benchmark 1: /opt/git/master/bin/git log --max-count=1 --pretty=format:'%H% %s %B %an %ae %aI %cn %ce %cI %P' -z -- contrib/git-shell-commands
+  Time (mean ± σ):      19.3 ms ±   1.1 ms    [User: 15.4 ms, System: 3.9 ms]
+  Range (min … max):    18.0 ms …  23.1 ms    157 runs
+#+end_src
+
+
+#+begin_src shell
+$time git log --max-count=1 --pretty=format:'%H% %s %B %an %ae %aI %cn %ce %cI %P' -z -- contrib/git-shell-commands
+..
+real    0m0.407s
+user    0m0.328s
+sys     0m0.080s
+#+end_src
+
+#+begin_src shell
+$time git log --max-count=1 --pretty=format:'%H% %s %B %an %ae %aI %cn %ce %cI %P' -z -- contrib/git-shell-commands
+54baefda8c0bbee461a4cd68dca970d92fddced0Add sample commands for git-shell Add sample commands for git-shell
+
+Provide a 'list' command to view available bare repositories ending in
+.git and a 'help command to display usage.  Also add documentation in
+a README
+
+Signed-off-by: Greg Brockman <gdb@mit.edu>
+Signed-off-by: Junio C Hamano <gitster@pobox.com>
+ Greg Brockman gdb@MIT.EDU 2010-07-28T00:43:04-07:00 Junio C Hamano gitster@pobox.com 2010-08-12T15:16:31-07:00 e69164ddb9d6092a94915bb984749d48f598cea8
+
+real    0m0.029s
+user    0m0.020s
+sys     0m0.009s
+#+end_src
+
+
+*** page
+
+**** batch 获取 目录最近提交接口
+   Waiting (TTFB)  1.19s
+
+   Waiting (TTFB)  630ms
+
+   tree (contrib目录): 370ms
+   tree (根目录)： 380ms
+
+
+
+   perf: TTFB 22-26ms
+   
