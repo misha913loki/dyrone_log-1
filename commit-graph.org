@@ -452,6 +452,8 @@ sys     0m0.009s
 
    Waiting (TTFB)  630ms
 
+   200 * 4= 800ms
+
    tree (contrib目录): 370ms
    tree (根目录)： 380ms
 
