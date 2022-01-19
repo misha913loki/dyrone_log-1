@@ -1,9 +1,21 @@
-** [patch] ls-tree
+* codereview force
+*** 提交说明
+**** add new useSpaceX parameter when createMR from proc-receive, skip write-ref when true： 85字符， 建议subject 50字符以内 [1] => agit-flow: skip `fetchRemote()` when possible
+**** add new pushOpt parameter when createMR from proc-receive, when equal to 'new' will skip tryToUpdateCodeReview : 72 字符， 建议 72 字符以内[1]
 
-性能的原因是进行了多次的printf调用，导致default 场景的性能变慢
+*** format/ 其他的错误（跟本次无关的）
+**** 新提交，前面（规划好你的patch， 心中有patch的概念）
+*** 分支名
+**** tl/feat_xxxxx
+**** tl/bugfix_xxxx
+**** tl/perf_xxxx
+*** be consistent
 
- 对于default场景应该支持直接输出
+*** from very beginning to design your patches
+*** use `git add -p`
+*** links
+[1] https://github.com/git/git/blob/master/Documentation/MyFirstContribution.txt#L262
 
- 只能是--format
 
- default 是一种特殊的format
+
+Guidance now supports proxying for mutation rpcs, we should supplement

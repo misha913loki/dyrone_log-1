@@ -1,0 +1,41 @@
+* Geometric packing in Git
+
+
+*** [patch] https://public-inbox.org/git/cover.1614047097.git.me@ttaylorr.com/
+*** [sensible-replys]
+**** https://public-inbox.org/git/YDVM9U7zLstNBVq2@coredump.intra.peff.net/
+
+#+begin_src text
+Yeah, this is definitely a heuristic that can get out of sync with
+reality. I think in general if you have base pack A and somebody pushes
+up B, C, and D in sequence, we're likely to roll up a single DBC (in
+that order) pack. Further pushes E, F, G would have newer mtimes. So we
+might get GFEDBC directly. Or we might get GFE and DBC, but the former
+would still have a newer mtime, so we'd create GFEDBC on the next run.
+
+The issues come from:
+
+  - we are deciding what to roll up based on size. A big push might not
+    get rolled up immediately, putting it out-of-sync with the rest of
+    the rollups.
+
+  - we are happy to manipulate pack mtimes under the hood as part of the
+    freshen_*() code.
+
+I think you probably wouldn't want to use this roll-up strategy all the
+time (even though in theory it would eventually roll up to a single good
+pack), just because it is based on heuristics like this. You'd want to
+occasionally run a "real" repack that does a full traversal, possibly
+pruning objects, etc.
+
+And that's how we plan to use it at GitHub. I don't remember how much of
+the root problem we've discussed on-list, but the crux of it is:
+per-object costs including traversal can get really high on big
+repositories. Our shared-storage repo for all torvalds/linux forks is on
+the order of 45M objects, and some companies with large and active
+private repositories are close to that. Traversing the object graph
+takes 15+ minutes (plus another 15 for delta island marking). For busy
+repositories, by the time you finish repacking, it's time to start
+again. :)
+
+#+end_src
