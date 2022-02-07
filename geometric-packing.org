@@ -39,3 +39,21 @@ repositories, by the time you finish repacking, it's time to start
 again. :)
 
 #+end_src
+
+
+
+
+* test 
+
+** [satellite]ENV(172.27.66.61):
+*** Use grpcurl test in VPC， invoke satellite GRPC interface
+*** repo: /home/git/repositories/672/550/000/550672.git
+*** request:
+
+ #+begin_src shell
+   grpcurl -plaintext -protoset satellite.protoset  -d '{"repository": {"gl_repository_id": 228676,"relative_path": "676/228/000/228676.git","storage_name": "default"}}'  localhost:58081 "satellite.RepositoryService/MidxRepack"
+
+ #+end_src
+
+
+ grpcurl -plaintext -protoset satellite.protoset  -d '{"repository": {"gl_repository_id": 228676,"relative_path": "dyrone/dyrone/dyrone.git","storage_name": "default"}}'  localhost:58081 "satellite.RepositoryService/RepackGeometric"
